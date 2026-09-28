@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "additionalDirectories": [
+      "C:/Users/Saksham/Git/poc/AIAgents/code-orchestration",
+      "C:/Users/Saksham/Git/poc/AIAgents/mcp-server"
+    ]
+  },
+  "enabledMcpjsonServers": [
+    "strands-agents",
+    "hse-easy-mock"
+  ]
+}
