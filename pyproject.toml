@@ -1,0 +1,45 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agent-orchestration"
+version = "0.1.0"
+description = "Supervisor Agent-Orchestrated HSE Editorial Research Analyst"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "strands-agents>=1.55.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "python-dotenv>=1.0.0",
+    "openai>=1.68.0,<3.0.0",
+    "fastmcp>=0.1.0",
+    "hse-easy-mock-mcp",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+]
+
+[tool.uv.sources]
+hse-easy-mock-mcp = { path = "../mcp-server", editable = true }
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+markers = ["live: calls real model endpoints; user-triggered only"]
+addopts = "-m 'not live'"
