@@ -28,6 +28,7 @@ Before any analysis, read these. They are your criteria, and you apply every one
 5. `.agents/docs/DESIGN.md`, the concept and the component roles.
 6. `.agents/templates/draft.md`, the draft template, which is held constant with Approach 1.
 7. For reused code and the prompt-parity checks, Approach 1 in `../code-orchestration/`, which you only read.
+8. `AGENTS.md`, the product rules and working rules of this repository.
 
 The two review skills are project files in `.agents/skills/`, not registered Claude Code skills. Open them with the Read tool, as you do the documents. `.claude/settings.json` grants read access to `../code-orchestration/` and `../mcp-server/`, so reading Approach 1 needs no permission prompt.
 

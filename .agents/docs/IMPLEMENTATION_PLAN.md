@@ -122,7 +122,7 @@ These settle points that the design (Draft v7) left open. `SPECIFICATIONS.md` ap
 | # | Iteration | Design phase | Main deliverables | Status |
 | :---: | :--- | :---: | :--- | :---: |
 | 0 | Packaging and scaffolding | 1 | `pyproject.toml`, `uv.lock`, `src/`, `tests/`, git branch | ✅ Complete (2026-09-28, 16 tests) |
-| 1 | Project documents and working rules | 0 | `AGENTS.md`, `CLAUDE.md`, and docs tests covering `SPECIFICATIONS.md`, `DESIGN.md` and the workflow files | ⏳ Pending |
+| 1 | Project documents and working rules | 0 | `AGENTS.md`, `CLAUDE.md`, and docs tests covering `SPECIFICATIONS.md`, `DESIGN.md` and the workflow files | ✅ Complete (2026-09-28, 199 tests) |
 | 2 | Reused modules and triaged tests | 1 | Approach 1 modules and tests, per D-J | ⏳ Pending |
 | 3 | Logging setup and correlation | 1 | `src/logging_setup.py` | ⏳ Pending |
 | 4 | New and amended contracts | 2 | `src/schemas.py`, `src/credentials.py` | ⏳ Pending |

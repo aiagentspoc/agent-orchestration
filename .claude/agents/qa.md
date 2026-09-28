@@ -26,7 +26,8 @@ Before any analysis, read these. They are your criteria, and you apply every one
    * D-I, the logging catalogue.
 4. `.agents/docs/DESIGN.md`, the concept and the component roles, and `.agents/templates/draft.md`, which every rendered draft must match.
 5. For the parity and reuse checks, Approach 1 in `../code-orchestration/`, which you only read.
-6. What actually landed:
+6. `AGENTS.md`, the product rules and working rules of this repository.
+7. What actually landed:
    * `git diff`;
    * `git status --short`;
    * each new file, read directly, since untracked files do not appear in the diff;
@@ -66,7 +67,7 @@ Then verify:
   * Each guardrail the iteration covers is produced by a test, both of the pure check and through its tool.
   * The check order matches `SPECIFICATIONS.md` §7.3.
   * Every violation is logged at WARNING, stored and returned.
-  * The attempt cap is 3 and is appended before the Writer runs.
+  * The attempt cap is `MAX_ATTEMPTS_PER_DOC = 3`, and each attempt is appended before the Writer runs.
   * `already_saved` also guards `writer_tool` and `qa_tool` (P2).
 - **No article text for the Supervisor (D-F),** where it applies. Tests prove that no result returned to the Supervisor carries `draft`, `candidate` or article text.
 - **Benchmark parity,** where it applies. The prompt parity tests exist and pass, and all five tools are attached to every sub-agent (P1).

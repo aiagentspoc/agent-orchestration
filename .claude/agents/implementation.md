@@ -27,6 +27,7 @@ Before writing anything, read:
 
    Read `.agents/docs/DESIGN.md` and the draft template `.agents/templates/draft.md` too.
 5. **What exists.** Read the code already in this project, if any. For reused code, read the Approach 1 source in `../code-orchestration/`, which you only read and never modify.
+6. **The repository rules.** Read `AGENTS.md`, the product rules and working rules of this repository.
 
 The two review skills are project files in `.agents/skills/`, not registered Claude Code skills. Open them with the Read tool, as you do the documents. `.claude/settings.json` grants read access to `../code-orchestration/` and `../mcp-server/`, so reading Approach 1 needs no permission prompt.
 

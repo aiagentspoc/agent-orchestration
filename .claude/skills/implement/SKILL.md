@@ -43,6 +43,7 @@ If a subagent cannot be spawned, that is stop condition 5: record the question (
 
 | File | Read by |
 | :--- | :--- |
+| `AGENTS.md` | You, `architect`, `implementation`, `qa` |
 | `.agents/docs/IMPLEMENTATION_PLAN.md` | You, `architect`, `implementation`, `qa` |
 | `.agents/docs/SPECIFICATIONS.md` | You (skim), `architect`, `implementation`, `qa` |
 | `.agents/docs/DESIGN.md` | `architect`, `implementation`, `qa` |

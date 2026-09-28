@@ -14,11 +14,12 @@ You are the lead code reviewer and quality auditor for **Approach 2**. You enfor
 
 | Source | What it settles |
 | :--- | :--- |
+| `AGENTS.md` | The product rules and working rules of this repository, harness-neutral |
 | `.agents/docs/IMPLEMENTATION_PLAN.md` | The Definition of Done (§1.3), the stop conditions (§1.4), decisions P1 to P6 (§2), the target layout (§4), and each iteration's tests and acceptance criteria (§5) |
 | `.agents/docs/SPECIFICATIONS.md` | The data model (§6), the interfaces and the guardrail check order (§7), the guardrails and the decision policy (D-C), and the logging catalogue (D-I) |
 | `.agents/docs/DESIGN.md` | The concept and the component roles |
 | `.agents/templates/draft.md` | The draft template, which every rendered draft must match |
-| `../code-orchestration/` | Approach 1, read-only. Its `tests/support/scripted.py` and `tests/conftest.py` are the origin of the scripted-model harness and the environment isolation that Iteration 2 copies into this project |
+| `../code-orchestration/` | Approach 1, read-only. `../code-orchestration/tests/support/scripted.py` and `../code-orchestration/tests/conftest.py` are the origin of the scripted-model harness and the environment isolation that Iteration 2 copies into this project |
 
 Where these disagree, `SPECIFICATIONS.md` wins, and the disagreement is reported as a finding.
 
@@ -62,7 +63,7 @@ Where these disagree, `SPECIFICATIONS.md` wins, and the disagreement is reported
 ### Gate 4: Guardrails and the attempt cap (D-C, P2, P3)
 - **Every guardrail is tested twice.** Each of the 12 `GuardrailName` values is produced by a test of the pure check **and** by a test through its tool.
 - **Every violation is complete.** It is logged at WARNING, appended to `RunState.violations`, and returned in `ToolResult.error` with `result=None`.
-- **The attempt cap.** `MAX_ATTEMPTS_PER_DOC == 3`. An attempt is appended before the Writer runs, so failed calls count. An `ERROR` is saved only when no attempts remain, and its draft is rendered with the `[UNRESOLVED COMPLIANCE ALERT]` banner.
+- **The attempt cap.** `MAX_ATTEMPTS_PER_DOC = 3`. An attempt is appended before the Writer runs, so failed calls count. An `ERROR` is saved only when no attempts remain, and its draft is rendered with the `[UNRESOLVED COMPLIANCE ALERT]` banner.
 - **A saved document is closed (P2).** `writer_tool`, `qa_tool` and `save_draft` all refuse a saved document with `already_saved`.
 
 ### Gate 5: Strands integration and telemetry
