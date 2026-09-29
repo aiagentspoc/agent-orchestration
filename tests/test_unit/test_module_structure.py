@@ -10,7 +10,17 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-EXPECTED_MODULES = ["src"]
+EXPECTED_MODULES = [
+    "src",
+    "src.credentials",
+    "src.schemas",
+    "src.costs",
+    "src.diagnostics",
+    "src.model_factory",
+    "src.template_engine",
+    "src.mcp_client",
+    "src.telemetry",
+]
 
 
 def test_src_package_exposes_version() -> None:

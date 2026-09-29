@@ -34,3 +34,8 @@
 ### ⏱️ Run Telemetry (For Benchmark)
 * **Time Taken:** {latency_seconds}s
 * **Estimated Cost:** ${estimated_cost} ({total_tokens} tokens)
+* **Cost Basis:** {model_rates_used}
+
+#### Agent Tool Usage
+
+{stage_telemetry_markdown_table}

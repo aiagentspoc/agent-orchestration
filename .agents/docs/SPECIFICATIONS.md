@@ -1,7 +1,7 @@
 # HSE Easy — Approach 2 Specifications
 ## Research Analyst (Supervisor Agent-Orchestrated System)
 
-**Status:** Approved, 2026-09-28. This file consolidates the design plan (Draft v7) with decisions P1 to P6 from `IMPLEMENTATION_PLAN.md` §2.
+**Status:** Approved, 2026-09-28. This file consolidates the design plan (Draft v7) with decisions P1 to P9 from `IMPLEMENTATION_PLAN.md` §2.
 **SDK checked against:** `strands-agents 1.55.1`, the version locked in Approach 1's `uv.lock`.
 **Approach 1 (reference project):** `../code-orchestration/`, the folder next to `agent-orchestration/`. On this machine that is `C:\Users\Saksham\Git\poc\AIAgents\code-orchestration`. It is **read-only**. Its `src/`, `tests/`, `uv.lock`, `drafts/` and `.agents/docs/` are the baseline this project reuses and is benchmarked against.
 
@@ -26,7 +26,7 @@ Where they disagree, this file wins, and the disagreement is a stop condition (`
 | 5 | Architecture decisions D-A to D-J |
 | 6 | Data model |
 | 7 | Interfaces: tools, views, check order, CLI, logs, exit codes |
-| 8 | Decision log: Q1–Q12, DM1–DM18, P1–P6 |
+| 8 | Decision log: Q1–Q12, DM1–DM18, P1–P9 |
 
 ---
 
@@ -45,7 +45,7 @@ The two approaches are benchmarked against each other, so **orchestration is the
 | Models and efforts | Scout `gpt-5-mini`, no effort; Writer `gpt-5.4`, `high`; QA-Legal `gpt-5.4`, `medium` |
 | Tool binding | **All five substrate tools attached to every sub-agent**, as in Approach 1 (its D19; P1). The `*_TOOL_NAMES` tuples remain declared intent; each prompt draws the boundary |
 | Prompts | The Scout and QA-Legal system prompts are byte-identical to Approach 1's. The Writer receives the same `ScoutCandidate`, now inside an `AttemptRecord` (§6.2); its prompt is reworded only where it names that input |
-| Template | `.agents/templates/draft.md`, unchanged |
+| Template | `.agents/templates/draft.md`, identical to Approach 1's current template (P8) |
 | Cost basis | Approach 1's three-rate cost model (D21) |
 | Execution | Sequential: one sub-agent call at a time (D-H) |
 
@@ -1013,7 +1013,7 @@ Exactly one MCP session is opened per run, and the exit-code mapping sits outsid
 | DM17 | Configuration | The attempt cap is fixed at 3; `ReasoningSettings` gains `supervisor`; `RunState` holds the configuration |
 | DM18 | Run result | `RunState` is the run's result, with `exit_code` and `supervisor_summary`; `PipelineRun` and `SupervisorReport` are removed; run totals are logged only; `ExitCode` (renamed) gains `SUPERVISOR_ERROR = 6` |
 
-#### 8.3 Implementation decisions (P1–P6)
+#### 8.3 Implementation decisions (P1–P9)
 
 These are recorded in `IMPLEMENTATION_PLAN.md` §2 and are applied throughout this file.
 
@@ -1025,8 +1025,11 @@ These are recorded in `IMPLEMENTATION_PLAN.md` §2 and are applied throughout th
 | P4 | **No live runs** during implementation or in the default test suite. Live end-to-end tests are marked `live` and triggered only by the user |
 | P5 | **Commit per iteration,** on the local branch `approach-2/implementation`, never pushed |
 | P6 | **Exit-code severity is the numeric maximum,** as in Approach 1 |
+| P7 | **The Approach 1 baseline is the local working tree.** `../code-orchestration/` and `../mcp-server/` are used as they are on disk, uncommitted edits included; neither is committed or changed (`QUESTIONS.md` Q1, 2026-09-28) |
+| P8 | **The draft template is Approach 1's current one.** `.agents/templates/draft.md` is a content-identical copy of `../code-orchestration/.agents/templates/draft.md`, including its Cost Basis line and Agent Tool Usage table (`QUESTIONS.md` Q3, 2026-09-29) |
+| P9 | **`src/mcp_client.py` may gain type annotations only.** Iteration 7 adds the 9 missing annotations to the verbatim copy; this is the one permitted divergence from Approach 1's module (`QUESTIONS.md` Q5, 2026-09-29) |
 
-New decisions made during implementation are added to `IMPLEMENTATION_PLAN.md` §2 as P7, P8 and so on, and recorded here.
+New decisions made during implementation are added to `IMPLEMENTATION_PLAN.md` §2 as P10, P11 and so on, and recorded here.
 
 #### 8.4 Spike results
 

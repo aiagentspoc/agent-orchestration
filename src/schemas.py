@@ -1,0 +1,421 @@
+"""Pydantic v2 data models and internal contracts for HSE Easy pipeline."""
+
+from enum import IntEnum
+from pathlib import Path
+from typing import Generic, Literal, TypeAlias, TypeVar
+
+from pydantic import BaseModel, ConfigDict, Field
+
+__all__ = [
+    "RegulatoryUpdateSummary",
+    "RegulatoryDocument",
+    "CitationVerificationResult",
+    "TDIServiceOffering",
+    "PipelineScope",
+    "ArticleDraft",
+    "QAReport",
+    "DraftMetadata",
+    "ScoutCandidate",
+    "ScoutReport",
+    "ToolInvocation",
+    "AgentTelemetry",
+    "WorkerOutput",
+    "StageTelemetry",
+    "ModelRate",
+    "RemoteErrorDetail",
+    "FailureStage",
+    "FailureRecord",
+    "PipelineConfig",
+    "DraftResult",
+    "PipelineExitCode",
+]
+
+
+# ============================================================================
+# Substrate Models (matching hse-easy-mock MCP server contracts)
+# ============================================================================
+
+
+class RegulatoryUpdateSummary(BaseModel):
+    """Tier 1 lightweight summary model for HSE regulatory updates."""
+
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    doc_id: str = Field(..., description="Unique slug identifier")
+    source: Literal["EUR_LEX", "GAZZETTA_UFFICIALE", "INAIL"]
+    doc_type: Literal["directive", "regulation", "decree", "circular", "guideline"]
+    official_reference: str = Field(..., description="Canonical reference, e.g. 'D.Lgs. 81/2008'")
+    title: str = Field(..., description="Official title in Italian")
+    publication_date: str = Field(..., description="ISO 8601 YYYY-MM-DD")
+    effective_date: str | None = None
+    impact_level: Literal["critical", "high", "medium", "low"]
+    topic_tags: list[str] = Field(default_factory=list)
+    summary: str = Field(..., description="Executive summary")
+    canonical_url: str
+
+
+class RegulatoryDocument(RegulatoryUpdateSummary):
+    """Tier 2 comprehensive document model."""
+
+    status: Literal["in_force", "amended", "repealed", "proposed"]
+    target_sectors: list[str] = Field(default_factory=list)
+    key_obligations: list[str] = Field(default_factory=list)
+    penalties_summary: str | None = None
+    related_citations: list[str] = Field(default_factory=list)
+    content_markdown: str
+
+
+class CitationVerificationResult(BaseModel):
+    """Legal citation verification result returned by legal QA tools."""
+
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    citation_input: str
+    is_valid: bool
+    status: Literal["in_force", "amended", "repealed", "unrecognized"]
+    canonical_citation: str
+    official_reference: str | None = None
+    official_url: str | None = None
+    verified_against_doc_id: str | None = None
+    notes: str | None = None
+
+
+class TDIServiceOffering(BaseModel):
+    """Commercial service offering and pre-approved CTA templates."""
+
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    service_id: str
+    service_name: str
+    topic_category: str
+    applicable_sectors: list[str] = Field(default_factory=list)
+    value_proposition: str
+    cta_headline: str
+    cta_body: str
+    landing_page_url: str
+
+
+# ============================================================================
+# Pipeline Internal Models (powering procedural orchestrator and workers)
+# ============================================================================
+
+
+class PipelineScope(BaseModel):
+    """Extracted scope boundaries from raw user prompt.
+
+    The lookback window is carried in two forms of the same fact.
+    ``time_window`` is the human-readable token the user-facing "searched window"
+    notice reports; ``date_from`` and ``date_to`` are the absolute bounds the
+    Scout passes straight to ``list_regulatory_updates``. Resolving one into the
+    other is the ScopeParser's job, done against the current date supplied at
+    call time, because a worker asked to date-reason from its training prior has
+    no way to know what "now" is — and the orchestrator re-validates the result
+    rather than trusting the arithmetic.
+    """
+
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    time_window: str = Field(..., description="Lookback window, e.g., '2_months', '30_days'")
+    date_from: str = Field(..., description="Absolute start of the lookback window, ISO 8601 YYYY-MM-DD")
+    date_to: str = Field(..., description="Absolute end of the lookback window, ISO 8601 YYYY-MM-DD")
+    sources: list[Literal["EUR_LEX", "GAZZETTA_UFFICIALE", "INAIL"]] = Field(default_factory=list)
+    sector_constraints: list[str] = Field(default_factory=list)
+    max_drafts: int | None = Field(default=None, description="Draft limit; None = unconstrained")
+    time_window_specified: bool = Field(
+        default=False,
+        description="True only when the user named a concrete window; False when defaulted or vague",
+    )
+
+
+class ArticleDraft(BaseModel):
+    """Article content generated by Writer Agent.
+
+    ``source_doc_id`` is the draft's provenance: the substrate slug of the
+    document the article was written from, copied from the Writer's input. It is
+    a plain string rather than a nested :class:`RegulatoryUpdateSummary` because
+    the Writer *echoes* it, and asking an LLM to echo a whole nested record
+    invites corruption. Without it the draft is four strings with no link back to
+    the corpus, which leaves QA-Legal instructed to fetch the source instrument
+    and holding nothing to fetch it with. The empty string is the Writer's
+    contracted way of reporting that its own ``get_document_by_id`` call failed.
+    """
+
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    source_doc_id: str = Field(
+        ...,
+        description="doc_id of the source document, copied exactly from the input; empty if the fetch failed",
+    )
+    headline: str
+    executive_summary: str
+    article_body: str
+    tdi_cta: str
+
+
+class QAReport(BaseModel):
+    """Compliance audit returned by QA-Legal Agent."""
+
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    status: Literal["PASS", "WARNING", "ERROR"]
+    verified_citations: list[str] = Field(default_factory=list)
+    issues: list[str] = Field(default_factory=list)
+    review_notes: str = ""
+
+
+class DraftMetadata(BaseModel):
+    """Complete record required to render .agents/templates/draft.md."""
+
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    draft_id: str = Field(..., description="Consistent format: draft_YYYYMMDD_001")
+    source_name: str
+    publication_date: str
+    source_document_title: str
+    approach_name: str = "Approach 1 (Code-Orchestrated Pipeline)"
+    qa_report: QAReport
+    attempts: int
+    latency_seconds: float
+    estimated_cost: float
+    total_tokens: int
+    unresolved_errors: list[str] = Field(default_factory=list)
+    stage_telemetry: list["StageTelemetry"] = Field(
+        default_factory=list,
+        description="Per-worker telemetry behind this draft; surfaces tool_invocations (SPECIFICATIONS §3.4)",
+    )
+    model_rates_used: dict[str, "ModelRate"] = Field(
+        default_factory=dict,
+        description="The cost basis this draft was priced with, so the figure is auditable after the fact",
+    )
+
+
+# ============================================================================
+# Scout Triage Models (SPECIFICATIONS §3.3)
+# ============================================================================
+
+
+class ScoutCandidate(BaseModel):
+    """One triaged regulatory update with its editorial relevance score."""
+
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    update: RegulatoryUpdateSummary
+    newsworthiness_score: float = Field(..., ge=0.0, le=1.0)
+    rationale: str = Field(..., description="Why this update qualifies for drafting")
+
+
+class ScoutReport(BaseModel):
+    """Ranked candidate set returned by the Scout Agent.
+
+    Rule 4 assigns newsworthiness filtering to the Scout and requires drafts for
+    all qualifying updates *unless the user set a limit*; D3 has the Scout pass
+    all qualifying updates unless the user explicitly bounds ``max_drafts``.
+    Neither assigns the ceiling to the orchestrator. So the Scout applies
+    ``PipelineScope.max_drafts`` itself — scoring and ranking everything, then
+    returning the top N — and this report carries every qualifying candidate only
+    when that ceiling is null. The orchestrator retains a defensive cap on the
+    returned count as a cost backstop, not as a second selection authority.
+    """
+
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    candidates: list[ScoutCandidate] = Field(default_factory=list)
+
+
+# ============================================================================
+# Worker Telemetry Envelope (SPECIFICATIONS §3.4)
+# ============================================================================
+
+
+class ToolInvocation(BaseModel):
+    """Per-tool execution statistics for one agent invocation."""
+
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    tool_name: str
+    call_count: int = 0
+    success_count: int = 0
+    error_count: int = 0
+    total_time_seconds: float = 0.0
+
+
+class AgentTelemetry(BaseModel):
+    """Typed projection of ``AgentResult.metrics.get_summary()`` for one worker call."""
+
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    model_id: str = Field(..., description="Model binding per ARCHITECTURE §3; keys the cost rate table")
+    reasoning_effort: str | None = Field(
+        default=None,
+        description=(
+            "Resolved reasoning effort this invocation actually ran at (D24); None when the "
+            "request carried no reasoning_effort at all. Configuration, not a metric: it is "
+            "injected by the caller, since Strands surfaces no reasoning-token count"
+        ),
+    )
+    input_tokens: int = 0
+    cache_read_input_tokens: int = Field(
+        default=0,
+        description="Cached prefix already counted inside input_tokens; billed at the cached rate",
+    )
+    output_tokens: int = 0
+    total_tokens: int = 0
+    latency_ms: int = 0
+    total_duration_seconds: float = 0.0
+    cycles: int = 0
+    tool_invocations: list[ToolInvocation] = Field(default_factory=list)
+
+
+T = TypeVar("T", bound=BaseModel)
+
+
+class WorkerOutput(BaseModel, Generic[T]):
+    """What every Strands worker returns: its structured payload plus telemetry."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    payload: T
+    telemetry: AgentTelemetry
+
+
+# ============================================================================
+# Orchestrator Contracts (Phase 6)
+# ============================================================================
+
+
+class StageTelemetry(BaseModel):
+    """One worker invocation's telemetry, labelled with the stage that produced it.
+
+    ``AgentTelemetry.model_id`` cannot identify the worker: the Writer and QA-Legal
+    share ``gpt-5.4``, as do the ScopeParser and the Scout. Without the stage label,
+    D19's role-bleed detection (SPECIFICATIONS §3.4) cannot say *which* worker
+    reached for a tool.
+    """
+
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    stage: Literal["scope_parser", "scout", "writer", "qa_legal"]
+    attempt: int = Field(default=1, description="Revision-loop attempt; 1 for stages outside the loop")
+    telemetry: AgentTelemetry
+
+
+class ModelRate(BaseModel):
+    """USD per one million tokens for one model, in three parts.
+
+    Three rates and not four: the OpenAI provider populates ``cacheReadInputTokens``
+    only — prompt caching is uncharged on write, and generated output is never
+    cached — so an output-cached rate would price something that cannot occur.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    input_usd_per_mtok: float = Field(..., ge=0.0)
+    cached_input_usd_per_mtok: float = Field(default=0.0, ge=0.0)
+    output_usd_per_mtok: float = Field(..., ge=0.0)
+
+
+class RemoteErrorDetail(BaseModel):
+    """Provider-side detail lifted off a remote failure, verbatim (D22).
+
+    Populated by :func:`src.diagnostics.describe_exception`, which walks the
+    ``__cause__`` chain so a Strands wrapper does not hide the HTTP status code,
+    provider error code or request ID underneath it.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    status_code: int | None = None
+    provider_code: str | None = None
+    provider_type: str | None = None
+    request_id: str | None = None
+    body: str | None = None
+    cause_chain: list[str] = Field(default_factory=list)
+
+
+#: Every point in the pipeline at which a failure can be attributed. Two of them sit
+#: outside any single worker stage: ``configuration`` covers credentials or rates that
+#: could not be resolved, so the run never started, and ``mcp_session`` covers opening
+#: or losing the substrate session itself.
+FailureStage: TypeAlias = Literal[
+    "configuration",
+    "mcp_session",
+    "scope_parser",
+    "scout",
+    "fetch_document",
+    "writer",
+    "qa_legal",
+    "render",
+    "persist",
+]
+
+
+class FailureRecord(BaseModel):
+    """One failed pipeline stage, recorded in full (D22).
+
+    Nothing here is truncated, summarised or sanitised: a partial batch failure
+    that reaches the caller only as a log line cannot be inspected by the caller.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    doc_id: str | None = None
+    stage: FailureStage
+    error_type: str = Field(..., description="Fully-qualified exception class name")
+    message: str = Field(..., description="The exception message, verbatim and never truncated")
+    remote: RemoteErrorDetail | None = None
+    traceback: str | None = Field(default=None, description="Full formatted traceback including the cause chain")
+
+
+class PipelineConfig(BaseModel):
+    """Resolved run configuration handed from the CLI to the pipeline core.
+
+    Every path is absolute by the time it reaches here (PLAN §4.6), so no pipeline
+    behaviour depends on the process working directory.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    max_drafts: int | None = Field(default=None, description="CLI ceiling; overrides PipelineScope.max_drafts")
+    log_level: str = "INFO"
+    drafts_dir: Path
+    template_path: Path
+    log_dir: Path
+
+
+class DraftResult(BaseModel):
+    """One draft the run actually persisted."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    draft_id: str
+    path: Path
+    doc_id: str
+    qa_status: Literal["PASS", "WARNING", "ERROR"]
+    writer_invocations: int = Field(
+        ..., description="Writer calls for this draft; always 1, 2 or 3 (PLAN §4.3, D10 as amended)"
+    )
+
+
+# ============================================================================
+# System Enumerations & Exit Codes
+# ============================================================================
+
+
+class PipelineExitCode(IntEnum):
+    """Standardized pipeline CLI error and exit codes (SPECIFICATIONS §6).
+
+    ``CONFIG_ERROR`` exists because every other code describes a run that
+    started: a misconfigured checkout that cannot resolve credentials would
+    otherwise exit on Python's default uncaught-exception status of 1, which is
+    ``NO_UPDATES`` — a *clean* exit meaning the regulatory feed was quiet.
+    """
+
+    SUCCESS = 0
+    NO_UPDATES = 1
+    MCP_ERROR = 2
+    PARSER_ERROR = 3
+    PERSISTENCE_ERROR = 4
+    CONFIG_ERROR = 5
+
+
+DraftMetadata.model_rebuild()

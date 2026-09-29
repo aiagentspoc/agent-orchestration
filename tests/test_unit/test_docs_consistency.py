@@ -181,6 +181,9 @@ IMPLEMENTATION_DECISIONS: dict[str, str] = {
     "P4": "No live runs",
     "P5": "Commit per iteration",
     "P6": "Exit-code severity is the numeric maximum",
+    "P7": "The Approach 1 baseline is the local working tree",
+    "P8": "The draft template is Approach 1's current one",
+    "P9": "`src/mcp_client.py` may gain type annotations only",
 }
 #: SPECIFICATIONS.md D-I event catalogue: (level, event), in order.
 LOG_EVENTS: tuple[tuple[str, str], ...] = (
@@ -684,8 +687,8 @@ def test_specification_records_decisions_d_a_to_d_j() -> None:
     assert headings == list("ABCDEFGHIJ")
 
 
-def test_specification_records_implementation_decisions_p1_to_p6() -> None:
-    """§8.3 has one row per implementation decision, P1 to P6, in order."""
+def test_specification_records_every_implementation_decision_in_order() -> None:
+    """§8.3 has one row per implementation decision in ``IMPLEMENTATION_DECISIONS``, P1 to P9, in order."""
     section = _spec_section("#### 8.3 Implementation decisions", "#### 8.4")
     assert re.findall(r"^\| (P\d+) \|", section, re.MULTILINE) == list(IMPLEMENTATION_DECISIONS)
 
@@ -712,7 +715,7 @@ def test_decisions_without_their_statement_reports_a_drifted_statement_under_eit
 def test_implementation_decisions_open_with_the_same_statement_in_both_records(
     source: Path, start: str, end: str
 ) -> None:
-    """Each of P1 to P6 opens its row with the statement pinned in ``IMPLEMENTATION_DECISIONS``, in both records."""
+    """Each of P1 to P9 opens its row with the statement pinned in ``IMPLEMENTATION_DECISIONS``, in both records."""
     missing = _decisions_without_their_statement(_between(_read(source), start, end, source))
     assert missing == [], f"{_rel(source)} does not open these decisions with their pinned statement: {missing}"
 
