@@ -1,9 +1,9 @@
 """Unit tests for per-draft cost and the amortisation of shared telemetry (D-J; Approach 1 D20, D21, Q2).
 
 Moved from Approach 1's ``tests/test_integration/test_orchestrator.py`` with the functions they test, which now
-live in :mod:`src.telemetry`. The test bodies are unchanged apart from the model IDs: Approach 1 keyed them by
-role from ``src.agents``, which Approach 2 builds in Iteration 6, so they name the two pipeline model IDs from
-:mod:`src.credentials` instead. Every role's model ID is one of those two, so each rate lookup is the same.
+live in :mod:`src.telemetry`. The test bodies are unchanged apart from Approach 1's ScopeParser model ID, which
+names the Scout's here: the ScopeParser is gone (Q12 = A), and both ran on ``gpt-5-mini``, so each rate lookup is
+the same.
 
 Rates are the fixed ``TEST_RATES`` of the scripted harness, so no test reads ``.env`` (D16), and no test builds an
 agent or a model.
@@ -11,14 +11,14 @@ agent or a model.
 
 import pytest
 
-from src.credentials import FAST_MODEL_ID, STRONG_MODEL_ID
+from src.agents import QA_LEGAL_MODEL_ID, SCOUT_MODEL_ID, WRITER_MODEL_ID
 from src.schemas import AgentTelemetry, StageTelemetry, ToolInvocation
 from src.telemetry import aggregate_draft_totals, amortise_shared_telemetry, estimate_cost
 from tests.support.scripted import TEST_RATES
 
 
 def _telemetry(
-    model_id: str = STRONG_MODEL_ID,
+    model_id: str = WRITER_MODEL_ID,
     *,
     input_tokens: int = 0,
     cache_read_input_tokens: int = 0,
@@ -43,8 +43,8 @@ def _telemetry(
 
 def test_estimate_cost_applies_per_model_rates() -> None:
     """Cost is keyed off the telemetry's own ``model_id``, never a single global rate."""
-    strong = _telemetry(STRONG_MODEL_ID, input_tokens=1000, output_tokens=500)
-    fast = _telemetry(FAST_MODEL_ID, input_tokens=1000, output_tokens=500)
+    strong = _telemetry(WRITER_MODEL_ID, input_tokens=1000, output_tokens=500)
+    fast = _telemetry(SCOUT_MODEL_ID, input_tokens=1000, output_tokens=500)
 
     assert estimate_cost(strong, TEST_RATES) == pytest.approx(1000 / 1e6 * 1.25 + 500 / 1e6 * 10.0)
     assert estimate_cost(fast, TEST_RATES) == pytest.approx(1000 / 1e6 * 0.25 + 500 / 1e6 * 2.0)
@@ -56,7 +56,7 @@ def test_estimate_cost_excludes_cached_tokens_from_full_input_rate() -> None:
 
     Adding the cached term on top of the full input term bills the same tokens twice.
     """
-    telemetry = _telemetry(STRONG_MODEL_ID, input_tokens=1000, cache_read_input_tokens=400, output_tokens=500)
+    telemetry = _telemetry(WRITER_MODEL_ID, input_tokens=1000, cache_read_input_tokens=400, output_tokens=500)
 
     expected = 600 / 1e6 * 1.25 + 400 / 1e6 * 0.125 + 500 / 1e6 * 10.0
     assert estimate_cost(telemetry, TEST_RATES) == pytest.approx(expected)
@@ -67,13 +67,13 @@ def test_estimate_cost_excludes_cached_tokens_from_full_input_rate() -> None:
 
 def test_estimate_cost_is_cheaper_when_tokens_are_cached() -> None:
     """Caching must reduce the bill, and billable input must never go negative."""
-    uncached = _telemetry(STRONG_MODEL_ID, input_tokens=1000, output_tokens=100)
-    fully_cached = _telemetry(STRONG_MODEL_ID, input_tokens=1000, cache_read_input_tokens=1000, output_tokens=100)
+    uncached = _telemetry(WRITER_MODEL_ID, input_tokens=1000, output_tokens=100)
+    fully_cached = _telemetry(WRITER_MODEL_ID, input_tokens=1000, cache_read_input_tokens=1000, output_tokens=100)
 
     assert estimate_cost(fully_cached, TEST_RATES) < estimate_cost(uncached, TEST_RATES)
 
     # Defensive: an upstream inconsistency must not produce a negative charge.
-    impossible = _telemetry(STRONG_MODEL_ID, input_tokens=100, cache_read_input_tokens=400, output_tokens=0)
+    impossible = _telemetry(WRITER_MODEL_ID, input_tokens=100, cache_read_input_tokens=400, output_tokens=0)
     assert estimate_cost(impossible, TEST_RATES) == pytest.approx(400 / 1e6 * 0.125)
     assert estimate_cost(impossible, TEST_RATES) >= 0.0
 
@@ -89,7 +89,7 @@ def test_amortise_shared_telemetry_splits_evenly_across_drafts() -> None:
     shared = [
         StageTelemetry(
             stage="scout",
-            telemetry=_telemetry(FAST_MODEL_ID, input_tokens=600, output_tokens=300, total_tokens=900),
+            telemetry=_telemetry(SCOUT_MODEL_ID, input_tokens=600, output_tokens=300, total_tokens=900),
         )
     ]
 
@@ -110,7 +110,7 @@ def test_amortise_shared_telemetry_assigns_remainder_to_first_draft() -> None:
     shared = [
         StageTelemetry(
             stage="scout",
-            telemetry=_telemetry(FAST_MODEL_ID, input_tokens=100, output_tokens=0, total_tokens=100),
+            telemetry=_telemetry(SCOUT_MODEL_ID, input_tokens=100, output_tokens=0, total_tokens=100),
         )
     ]
 
@@ -135,7 +135,7 @@ def test_amortise_never_gives_a_draft_more_cached_than_input_tokens() -> None:
         StageTelemetry(
             stage="scout",
             telemetry=_telemetry(
-                FAST_MODEL_ID,
+                SCOUT_MODEL_ID,
                 input_tokens=3,
                 cache_read_input_tokens=2,
                 output_tokens=1,
@@ -173,7 +173,7 @@ def test_amortised_cost_sums_to_the_run_cost_and_never_under_prices() -> None:
     divides_evenly = [
         StageTelemetry(
             stage="scout",
-            telemetry=_telemetry(FAST_MODEL_ID, input_tokens=100, cache_read_input_tokens=40, output_tokens=20),
+            telemetry=_telemetry(SCOUT_MODEL_ID, input_tokens=100, cache_read_input_tokens=40, output_tokens=20),
         )
     ]
     run_cost = estimate_cost(divides_evenly[0].telemetry, TEST_RATES)
@@ -184,7 +184,7 @@ def test_amortised_cost_sums_to_the_run_cost_and_never_under_prices() -> None:
     clamped = [
         StageTelemetry(
             stage="scout",
-            telemetry=_telemetry(FAST_MODEL_ID, input_tokens=3, cache_read_input_tokens=2, output_tokens=1),
+            telemetry=_telemetry(SCOUT_MODEL_ID, input_tokens=3, cache_read_input_tokens=2, output_tokens=1),
         )
     ]
     clamped_run_cost = estimate_cost(clamped[0].telemetry, TEST_RATES)
@@ -195,7 +195,7 @@ def test_amortised_cost_sums_to_the_run_cost_and_never_under_prices() -> None:
 
 def test_amortise_shared_telemetry_with_zero_drafts_returns_empty() -> None:
     """No drafts, nothing to attribute to — and no ZeroDivisionError."""
-    shared = [StageTelemetry(stage="scout", telemetry=_telemetry(FAST_MODEL_ID, input_tokens=10))]
+    shared = [StageTelemetry(stage="scout", telemetry=_telemetry(SCOUT_MODEL_ID, input_tokens=10))]
 
     assert amortise_shared_telemetry(shared, 0) == []
     assert amortise_shared_telemetry([], 2) == [[], []]
@@ -207,7 +207,7 @@ def test_amortise_shared_telemetry_keeps_tool_invocations_visible_in_every_draft
     D19 makes ``tool_invocations`` the role-bleed detector, so it must remain
     legible in each draft rather than being divided into meaninglessness.
     """
-    telemetry = _telemetry(FAST_MODEL_ID, input_tokens=10, total_tokens=10)
+    telemetry = _telemetry(SCOUT_MODEL_ID, input_tokens=10, total_tokens=10)
     telemetry.tool_invocations.append(
         ToolInvocation(tool_name="list_regulatory_updates", call_count=3, success_count=3)
     )
@@ -227,7 +227,7 @@ def test_amortise_shared_telemetry_carries_the_reasoning_effort_through() -> Non
     non-model field there, which makes it the one field that can go missing
     without a single arithmetic assertion noticing.
     """
-    telemetry = _telemetry(FAST_MODEL_ID, input_tokens=120, output_tokens=40, reasoning_effort="low")
+    telemetry = _telemetry(SCOUT_MODEL_ID, input_tokens=120, output_tokens=40, reasoning_effort="low")
 
     shares = amortise_shared_telemetry([StageTelemetry(stage="scout", telemetry=telemetry)], 3)
 
@@ -237,15 +237,15 @@ def test_amortise_shared_telemetry_carries_the_reasoning_effort_through() -> Non
 def test_aggregate_draft_totals_sums_own_and_shared() -> None:
     """A draft's totals are its own Writer/QA calls plus its amortised scope+scout share."""
     own = [
-        StageTelemetry(stage="writer", telemetry=_telemetry(STRONG_MODEL_ID, input_tokens=1000, output_tokens=500)),
+        StageTelemetry(stage="writer", telemetry=_telemetry(WRITER_MODEL_ID, input_tokens=1000, output_tokens=500)),
         StageTelemetry(
             stage="qa_legal",
             attempt=1,
-            telemetry=_telemetry(STRONG_MODEL_ID, input_tokens=200, output_tokens=100),
+            telemetry=_telemetry(QA_LEGAL_MODEL_ID, input_tokens=200, output_tokens=100),
         ),
     ]
     shared_share = [
-        StageTelemetry(stage="scout", telemetry=_telemetry(FAST_MODEL_ID, input_tokens=400, output_tokens=200))
+        StageTelemetry(stage="scout", telemetry=_telemetry(SCOUT_MODEL_ID, input_tokens=400, output_tokens=200))
     ]
 
     total_tokens, cost = aggregate_draft_totals(own, shared_share, TEST_RATES)
@@ -266,8 +266,8 @@ def test_provider_latency_ms_is_not_used_for_duration() -> None:
     and must not feed any cost, duration or benchmark figure. Carried on the
     telemetry record, ignored by every calculation.
     """
-    quiet = _telemetry(STRONG_MODEL_ID, input_tokens=1000, output_tokens=100, latency_ms=0)
-    loud = _telemetry(STRONG_MODEL_ID, input_tokens=1000, output_tokens=100, latency_ms=987_654)
+    quiet = _telemetry(WRITER_MODEL_ID, input_tokens=1000, output_tokens=100, latency_ms=0)
+    loud = _telemetry(WRITER_MODEL_ID, input_tokens=1000, output_tokens=100, latency_ms=987_654)
 
     assert estimate_cost(quiet, TEST_RATES) == estimate_cost(loud, TEST_RATES)
 

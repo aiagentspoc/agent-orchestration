@@ -22,6 +22,7 @@ EXPECTED_MODULES = [
     "src.telemetry",
     "src.logging_setup",
     "src.guardrails",
+    "src.agents",
 ]
 
 

@@ -131,7 +131,7 @@ These settle points that the design (Draft v7) left open. `SPECIFICATIONS.md` ap
 | 3 | Logging setup and correlation | 1 | `src/logging_setup.py` | ✅ Complete (2026-09-29, 364 tests) |
 | 4 | New and amended contracts | 2 | `src/schemas.py`, `src/credentials.py` | ✅ Complete (2026-09-29, 416 tests) |
 | 5 | Guardrail checks | 3 | `src/guardrails.py` | ✅ Complete (2026-09-29, 634 tests) |
-| 6 | Sub-agent runners and prompts | 3 | `src/agents.py` | ⏳ Pending |
+| 6 | Sub-agent runners and prompts | 3 | `src/agents.py` | ✅ Complete (2026-09-29, 742 tests) |
 | 7 | Tool wrapper core and `scout_tool` | 3 | `src/tools.py` | ⏳ Pending |
 | 8 | `writer_tool` | 3 | `src/tools.py` | ⏳ Pending |
 | 9 | `qa_tool` | 3 | `src/tools.py` | ⏳ Pending |

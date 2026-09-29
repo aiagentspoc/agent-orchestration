@@ -21,7 +21,7 @@ from strands import tool
 from strands.models.model import Model
 from strands.types.tools import AgentTool
 
-from src.credentials import FAST_MODEL_ID, STRONG_MODEL_ID
+from src.agents import QA_LEGAL_MODEL_ID, SCOUT_MODEL_ID, WRITER_MODEL_ID
 from src.mcp_client import HSEMockMCPClient
 from src.schemas import ModelRate, PipelineConfig
 
@@ -306,14 +306,16 @@ def offline_client(session: RecordingMCPSession) -> HSEMockMCPClient:
     return client
 
 
-#: The absolute bounds a scripted ScopeParser resolves ``past_3_months`` into,
-#: against a current date of 2026-09-22. Named so a test can assert that exactly
-#: these strings reached the Scout's user turn rather than a re-derived pair.
+#: The absolute bounds of a three-month lookback resolved against a current date of
+#: 2026-09-22. Named so a test can assert that exactly these strings reached the
+#: Scout's user turn rather than a re-derived pair.
 SCOPE_DATE_FROM: Final[str] = "2026-06-22"
 SCOPE_DATE_TO: Final[str] = "2026-09-22"
 
+#: ``PipelineScope`` arguments as a scripted structured-output turn supplies them:
+#: the five scope fields plus the ``context`` that code adds (DM2, DM5).
 VALID_SCOPE_ARGS: dict[str, Any] = {
-    "time_window": "past_3_months",
+    "context": {"today": SCOPE_DATE_TO},
     "date_from": SCOPE_DATE_FROM,
     "date_to": SCOPE_DATE_TO,
     "sources": ["INAIL"],
@@ -485,8 +487,7 @@ REPO_ROOT: Final[Path] = Path(__file__).resolve().parents[2]
 #: stale the moment ``.agents/templates/draft.md`` changes.
 REAL_TEMPLATE_PATH: Final[Path] = REPO_ROOT / ".agents" / "templates" / "draft.md"
 
-#: Fixed cost rates, injected everywhere so no test reads ``.env`` (D16). Keyed by
-#: the two pipeline model IDs, which is what every role's model ID resolves to.
+#: Fixed cost rates, injected everywhere so no test reads ``.env`` (D16).
 FAST_RATE: Final[ModelRate] = ModelRate(
     input_usd_per_mtok=0.25, cached_input_usd_per_mtok=0.025, output_usd_per_mtok=2.0
 )
@@ -494,8 +495,9 @@ STRONG_RATE: Final[ModelRate] = ModelRate(
     input_usd_per_mtok=1.25, cached_input_usd_per_mtok=0.125, output_usd_per_mtok=10.0
 )
 TEST_RATES: Final[dict[str, ModelRate]] = {
-    FAST_MODEL_ID: FAST_RATE,
-    STRONG_MODEL_ID: STRONG_RATE,
+    SCOUT_MODEL_ID: FAST_RATE,
+    WRITER_MODEL_ID: STRONG_RATE,
+    QA_LEGAL_MODEL_ID: STRONG_RATE,
 }
 
 #: ``PipelineScope`` structured-output arguments, derived from the schema-level
@@ -672,10 +674,11 @@ def sent_text(model: ScriptedModel, turn: int = 0) -> str:
     )
 
 
-#: The section header each worker's user turn carries, used to tell one worker's
-#: round trips from another's on the model they share (ARCHITECTURE §3).
-WRITER_PROMPT_SECTION: Final[str] = "## ScoutCandidate"
-QA_LEGAL_PROMPT_SECTION: Final[str] = "## ArticleDraft"
+#: The opening instruction each worker's user turn carries, used to tell one worker's
+#: round trips from another's on the model they share (SPECIFICATIONS.md §1). Both
+#: turns carry ``## AttemptRecord``, so the markers are sentences only one runner writes.
+WRITER_PROMPT_SECTION: Final[str] = "Write a publication-ready HSE article"
+QA_LEGAL_PROMPT_SECTION: Final[str] = "Audit the article draft"
 
 
 def worker_prompts(model: ScriptedModel, section: str) -> list[str]:
@@ -683,7 +686,7 @@ def worker_prompts(model: ScriptedModel, section: str) -> list[str]:
 
     D20 builds a fresh ``Agent`` per invocation, so an invocation's first round
     trip is the only one carrying exactly one message. Filtering on that, then on
-    the section header, separates the Writer's turns from QA-Legal's on the strong
+    the runner's marker sentence, separates the Writer's turns from QA-Legal's on the strong
     model the two share — and gives a test the literal prompt that reached the
     provider rather than a mock's record of itself.
 

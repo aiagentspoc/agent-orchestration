@@ -1170,11 +1170,18 @@ SPEC_NEW_MODELS: frozenset[str] = frozenset(
 
 
 def _defined_models() -> dict[str, type]:
-    """Return the ``BaseModel`` and ``IntEnum`` classes ``src.schemas`` defines itself, by name."""
+    """Return the ``BaseModel`` and ``IntEnum`` classes ``src.schemas`` defines itself, by name.
+
+    Pydantic writes every parametrised generic evaluated at a module's global scope, such as the return
+    annotation ``WorkerOutput[ScoutReport]`` in ``src.agents``, into the generic's own module namespace under a
+    name like ``"WorkerOutput[ScoutReport]"``. Those are not definitions, and their names are not identifiers,
+    so they are skipped; otherwise the result would depend on whether ``src.agents`` was imported first.
+    """
     return {
         name: value
         for name, value in vars(schemas).items()
-        if inspect.isclass(value)
+        if name.isidentifier()
+        and inspect.isclass(value)
         and value.__module__ == schemas.__name__
         and (issubclass(value, BaseModel) or issubclass(value, IntEnum))
     }
