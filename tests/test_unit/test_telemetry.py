@@ -109,7 +109,7 @@ def test_amortise_shared_telemetry_assigns_remainder_to_first_draft() -> None:
     """The integer remainder goes to the first draft so the run total is preserved exactly."""
     shared = [
         StageTelemetry(
-            stage="scope_parser",
+            stage="scout",
             telemetry=_telemetry(FAST_MODEL_ID, input_tokens=100, output_tokens=0, total_tokens=100),
         )
     ]
@@ -133,7 +133,7 @@ def test_amortise_never_gives_a_draft_more_cached_than_input_tokens() -> None:
     """
     shared = [
         StageTelemetry(
-            stage="scope_parser",
+            stage="scout",
             telemetry=_telemetry(
                 FAST_MODEL_ID,
                 input_tokens=3,

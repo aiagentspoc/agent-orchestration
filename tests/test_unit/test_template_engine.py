@@ -315,7 +315,7 @@ def _stage(
 def test_format_stage_telemetry_renders_markdown_table():
     """One header plus one row per stage, carrying the per-stage token split."""
     stages = [
-        _stage("scope_parser", "gpt-5-mini", input_tokens=120, output_tokens=40),
+        _stage("scout", "gpt-5-mini", input_tokens=120, output_tokens=40),
         _stage(
             "writer",
             "gpt-5.4",
@@ -336,8 +336,8 @@ def test_format_stage_telemetry_renders_markdown_table():
     assert set(lines[1].replace("|", "").replace(" ", "")) <= {":", "-"}
     assert len(lines) == 4
 
-    # The ScopeParser runs at no declared effort, so its cell is an em dash, never blank.
-    assert "| scope_parser | 1 | gpt-5-mini | — | 120 | 0 | 40 |" in lines[2]
+    # The Scout runs at no declared effort, so its cell is an em dash, never blank.
+    assert "| scout | 1 | gpt-5-mini | — | 120 | 0 | 40 |" in lines[2]
     assert "| writer | 2 | gpt-5.4 | high | 2000 | 800 | 900 |" in lines[3]
 
 

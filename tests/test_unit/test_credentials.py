@@ -12,7 +12,12 @@ from pathlib import Path
 import pytest
 from pydantic import SecretStr, ValidationError
 
+from src.costs import CostSettings
 from src.credentials import CredentialManager, ModelCredentials, ReasoningSettings
+from tests.conftest import _ISOLATED_ENV_VARS
+
+#: The documented configuration surface a developer copies to ``.env``.
+ENV_EXAMPLE: Path = Path(__file__).resolve().parents[2] / ".env.example"
 
 _EXPLICIT_VALUES: dict[str, str] = {
     "HSE_MODEL_FAST_ENDPOINT": "https://fast.example.invalid/openai/v1/",
@@ -230,3 +235,81 @@ def test_bare_writer_and_qa_legal_environment_variables_are_not_configuration(
 
     assert settings.writer is None
     assert settings.qa_legal is None
+
+
+# ---------------------------------------------------------------------------
+# ReasoningSettings.supervisor (D-H, Q5 = B) — the Supervisor's effort override
+# ---------------------------------------------------------------------------
+
+
+def test_supervisor_reasoning_effort_resolves_to_medium_when_unset() -> None:
+    """D-H: the Supervisor runs at ``medium`` unless ``.env`` says otherwise."""
+    assert ReasoningSettings(_env_file=None).supervisor == "medium"
+
+
+def test_supervisor_reasoning_effort_resolves_to_medium_when_empty(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An empty value, in the environment or in ``.env``, means the default, as ``.env.example`` states."""
+    env_file = tmp_path / ".env"
+    env_file.write_text("HSE_MODEL_SUPERVISOR_REASONING_EFFORT=\n", encoding="utf-8")
+    assert ReasoningSettings(_env_file=env_file).supervisor == "medium"
+
+    monkeypatch.setenv("HSE_MODEL_SUPERVISOR_REASONING_EFFORT", "")
+    assert ReasoningSettings(_env_file=None).supervisor == "medium"
+
+    monkeypatch.setenv("HSE_MODEL_SUPERVISOR_REASONING_EFFORT", "high")
+    assert ReasoningSettings(_env_file=None).supervisor == "high"
+
+
+def test_supervisor_reasoning_effort_is_read_from_its_alias(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``HSE_MODEL_SUPERVISOR_REASONING_EFFORT`` overrides it, in the Writer's and QA-Legal's style."""
+    monkeypatch.setenv("HSE_MODEL_SUPERVISOR_REASONING_EFFORT", "high")
+
+    settings = ReasoningSettings(_env_file=None)
+
+    assert settings.supervisor == "high"
+    assert (settings.writer, settings.qa_legal) == (None, None)
+
+
+def test_supervisor_reasoning_effort_honours_env_file_none(tmp_path: Path) -> None:
+    """A ``.env`` file sets it, and ``_env_file=None`` really disables that file."""
+    env_file = tmp_path / ".env"
+    env_file.write_text("HSE_MODEL_SUPERVISOR_REASONING_EFFORT=low\n", encoding="utf-8")
+
+    assert ReasoningSettings(_env_file=env_file).supervisor == "low"
+    assert ReasoningSettings(_env_file=None).supervisor == "medium"
+
+
+def test_supervisor_reasoning_effort_is_populated_through_its_alias_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Neither the field name nor a bare ``SUPERVISOR`` variable is a second way in."""
+    assert ReasoningSettings(_env_file=None, HSE_MODEL_SUPERVISOR_REASONING_EFFORT="xhigh").supervisor == "xhigh"
+    assert ReasoningSettings(_env_file=None, supervisor="xhigh").supervisor == "medium"
+
+    monkeypatch.setenv("SUPERVISOR", "minimal")
+    assert ReasoningSettings(_env_file=None).supervisor == "medium"
+
+
+@pytest.mark.parametrize("settings_class", [CredentialManager, CostSettings, ReasoningSettings])
+def test_environment_isolation_strips_every_settings_variable(settings_class: type) -> None:
+    """D16: the autouse isolation in ``tests/conftest.py`` strips every variable a settings class reads.
+
+    A variable missing from that list would let a developer's exported value reach an assertion, such as
+    the Supervisor's ``medium`` default.
+    """
+    aliases = {field.alias for field in settings_class.model_fields.values()}
+
+    assert None not in aliases
+    assert aliases <= set(_ISOLATED_ENV_VARS)
+
+
+@pytest.mark.parametrize("settings_class", [CredentialManager, CostSettings, ReasoningSettings])
+def test_env_example_documents_every_settings_variable(settings_class: type) -> None:
+    """Every variable a settings class reads has a line in ``.env.example``, set or commented out."""
+    documented = {
+        line.lstrip("#").split("=", 1)[0].strip()
+        for line in ENV_EXAMPLE.read_text(encoding="utf-8").splitlines()
+        if "=" in line
+    }
+
+    assert {field.alias for field in settings_class.model_fields.values()} <= documented

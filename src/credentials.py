@@ -1,7 +1,7 @@
 """`.env`-backed model credential resolution for the HSE Easy pipeline.
 
-Two credential slots are defined, keyed by the ARCHITECTURE §3 model bindings:
-a *fast* slot (ScopeParser, Scout) and a *strong* slot (Writer, QA-Legal).
+Two credential slots are defined, keyed by the model bindings of SPECIFICATIONS.md §1:
+a *fast* slot (Scout) and a *strong* slot (Writer, QA-Legal and the Supervisor).
 API keys are held as :class:`~pydantic.SecretStr` so they are masked in every
 ``str()`` and ``repr()`` and therefore cannot leak into Rule 6 telemetry logs.
 
@@ -10,7 +10,7 @@ This module holds no provider knowledge; see :mod:`src.model_factory`.
 
 from typing import Final
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 __all__ = [
@@ -100,16 +100,19 @@ class ReasoningSettings(BaseSettings):
     no credentials present. An unset *or empty* value falls through to the role
     constant in :mod:`src.agents` — plain ``or`` semantics, which is worth stating
     because leaving a variable blank in ``.env`` is a realistic way to try to
-    "turn it off" and does not do that.
+    "turn it off" and does not do that. ``supervisor`` alone carries its default
+    on the field: the Supervisor runs at ``medium`` unless overridden (D-H, Q5 = B),
+    and an unset *or empty* value resolves to ``medium`` on the field itself.
 
     Construct with ``_env_file=None`` in tests so a developer's real ``.env`` can
     never influence an assertion (D16), and populate through the **aliases** —
     ``populate_by_name`` is deliberately not set, so the accepted configuration
-    surface is exactly the two names D24 and ``.env.example`` document. Allowing
-    the field names too would make the bare variables ``WRITER`` and ``QA_LEGAL``
-    live configuration, which are generic enough to be set on a developer's shell
-    for entirely unrelated reasons, and would be inconsistent with
-    :class:`CredentialManager` and ``CostSettings``, neither of which sets it.
+    surface is exactly the three names D24, D-H and ``.env.example`` document.
+    Allowing the field names too would make the bare variables ``WRITER``,
+    ``QA_LEGAL`` and ``SUPERVISOR`` live configuration, which are generic enough
+    to be set on a developer's shell for entirely unrelated reasons, and would be
+    inconsistent with :class:`CredentialManager` and ``CostSettings``, neither of
+    which sets it.
     """
 
     model_config = SettingsConfigDict(
@@ -121,3 +124,10 @@ class ReasoningSettings(BaseSettings):
 
     writer: str | None = Field(default=None, alias="HSE_MODEL_WRITER_REASONING_EFFORT")
     qa_legal: str | None = Field(default=None, alias="HSE_MODEL_QA_REASONING_EFFORT")
+    supervisor: str | None = Field(default="medium", alias="HSE_MODEL_SUPERVISOR_REASONING_EFFORT")
+
+    @field_validator("supervisor", mode="before")
+    @classmethod
+    def _empty_supervisor_effort_means_medium(cls, value: object) -> object:
+        """Resolve an empty Supervisor effort to ``medium``, as ``.env.example`` documents."""
+        return value or "medium"

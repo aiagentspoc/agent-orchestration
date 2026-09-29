@@ -38,6 +38,7 @@ _ISOLATED_ENV_VARS: Final[tuple[str, ...]] = (
     "HSE_COST_STRONG_OUTPUT_USD_PER_MTOK",
     "HSE_MODEL_WRITER_REASONING_EFFORT",
     "HSE_MODEL_QA_REASONING_EFFORT",
+    "HSE_MODEL_SUPERVISOR_REASONING_EFFORT",
 )
 
 #: The loggers ``configure_logging`` takes over. Restated here rather than

@@ -22,6 +22,8 @@ from pathlib import Path, PurePosixPath
 
 import pytest
 
+from src.schemas import MAX_ATTEMPTS_PER_DOC
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DOCS_DIR = REPO_ROOT / ".agents" / "docs"
 
@@ -115,8 +117,6 @@ _REMOVAL_WORDS = re.compile(
 #: or a code comment, is one unit.
 _SENTENCE_BREAK = re.compile(r"(?<=[.!?])\s+")
 
-#: D-C rule 4. A literal until Iteration 4 creates ``src.schemas.MAX_ATTEMPTS_PER_DOC``, which then replaces it.
-_ATTEMPT_CAP = 3
 #: Phrases that describe a sub-agent as holding a subset of the substrate tools, contradicting P1. "Scoped tools"
 #: is Approach 1's column name for that idea. Each phrase is anchored on tools, access or connection, so generic
 #: prose such as "limited to the top N candidates" does not match. Deliberately absent: "limits it to", which
@@ -135,6 +135,12 @@ PARTIAL_BINDING_PHRASES: tuple[str, ...] = (
     "only connected to",
     "limited to the tools",
     "restricted to the tools",
+)
+#: Patterns for the claims a fixed phrase cannot anchor, because words come between the verb and "tools": "is
+#: limited to the list and search tools". The match must end on "tools" within one sentence, so "limited to the top
+#: N candidates" does not match (QA-m4, Iteration 1).
+PARTIAL_BINDING_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"\b(?:is|are) (?:limited|restricted) to\b[^.\n]{0,60}?\btools\b", re.IGNORECASE),
 )
 #: SPECIFICATIONS.md D-C decision table, pinned word for word: (QA status, attempts remaining, condition, decision),
 #: row by row. The Supervisor prompt copies these rows (Iteration 13), so, like §7.1, they are benchmark constants.
@@ -463,13 +469,14 @@ def _stated_attempt_caps(text: str) -> list[int]:
 
 def _states_the_cap_canonically(text: str) -> bool:
     """Return True when ``text`` states the cap as ``MAX_ATTEMPTS_PER_DOC = 3`` or as "3 Writer attempts"."""
-    return f"MAX_ATTEMPTS_PER_DOC = {_ATTEMPT_CAP}" in text or f"{_ATTEMPT_CAP} Writer attempts" in text
+    return f"MAX_ATTEMPTS_PER_DOC = {MAX_ATTEMPTS_PER_DOC}" in text or f"{MAX_ATTEMPTS_PER_DOC} Writer attempts" in text
 
 
 def _partial_binding_claims(text: str) -> list[str]:
-    """Return each phrase of ``PARTIAL_BINDING_PHRASES`` that ``text`` uses, in any case."""
+    """Return the partial-binding phrases and pattern matches found in ``text``, in lower case."""
     lowered = text.lower()
-    return [phrase for phrase in PARTIAL_BINDING_PHRASES if phrase in lowered]
+    phrases = [phrase for phrase in PARTIAL_BINDING_PHRASES if phrase in lowered]
+    return phrases + [match.group(0) for pattern in PARTIAL_BINDING_PATTERNS for match in pattern.finditer(lowered)]
 
 
 def _scratchpad_mentions(text: str) -> list[str]:
@@ -751,6 +758,10 @@ def test_partial_binding_claims_flags_restricted_tool_sets_but_not_prompt_bounda
     assert _partial_binding_claims("The Scout is bound only to the list and search tools.") == ["bound only to"]
     assert _partial_binding_claims("The Writer only has access to two tools.") == ["only has access to"]
     assert _partial_binding_claims("QA-Legal is connected only to verify_legal_citation.") == ["connected only to"]
+    assert _partial_binding_claims("The Scout is limited to the list and search tools.") == [
+        "is limited to the list and search tools"
+    ]
+    assert _partial_binding_claims("The Scout is limited to the top 5 candidates.") == []
     assert _partial_binding_claims("Each sub-agent's prompt limits it to the tools its job needs.") == []
     assert _partial_binding_claims("cache_read_input_tokens: int  # subset of input_tokens") == []
 
@@ -804,12 +815,17 @@ def test_document_states_no_attempt_cap_but_the_canonical_one(path: Path) -> Non
     """A document that states the cap states 3, and states it at least once in a canonical form."""
     text = _read(path)
     caps = _stated_attempt_caps(text)
-    assert all(cap == _ATTEMPT_CAP for cap in caps), f"{_rel(path)} states the attempt cap as {caps}"
+    assert all(cap == MAX_ATTEMPTS_PER_DOC for cap in caps), f"{_rel(path)} states the attempt cap as {caps}"
     if caps:
         assert _states_the_cap_canonically(text), (
-            f"{_rel(path)} states the cap, but not as `MAX_ATTEMPTS_PER_DOC = {_ATTEMPT_CAP}` "
-            f"or as '{_ATTEMPT_CAP} Writer attempts'"
+            f"{_rel(path)} states the cap, but not as `MAX_ATTEMPTS_PER_DOC = {MAX_ATTEMPTS_PER_DOC}` "
+            f"or as '{MAX_ATTEMPTS_PER_DOC} Writer attempts'"
         )
+
+
+def test_specification_states_the_attempt_cap_the_code_enforces() -> None:
+    """SPECIFICATIONS.md §6.9 declares the constant with the value ``src.schemas`` gives it."""
+    assert f"MAX_ATTEMPTS_PER_DOC = {MAX_ATTEMPTS_PER_DOC}" in _read(SPECIFICATIONS_MD)
 
 
 @pytest.mark.parametrize("path", DOCS_STATING_THE_CAP, ids=_rel)
