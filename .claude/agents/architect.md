@@ -15,7 +15,7 @@ Before any analysis, read these. They are your criteria, and you apply every one
 2. `.agents/skills/code-reviewer/SKILL.md`: the quality gates and the severity taxonomy.
 3. `.agents/docs/IMPLEMENTATION_PLAN.md`:
    * §1, the execution protocol and the stop conditions;
-   * §2, decisions P1 to P9;
+   * §2, decisions P1 to P10;
    * §4, the target layout;
    * the section for **this iteration**.
 4. `.agents/docs/SPECIFICATIONS.md`, the specification:

@@ -117,6 +117,7 @@ These settle points that the design (Draft v7) left open. `SPECIFICATIONS.md` ap
 | **P7** | **The Approach 1 baseline is the local working tree.** `../code-orchestration/` and `../mcp-server/` are used as they are on disk, uncommitted edits included; neither is committed or changed (Q1, 2026-09-28). | Every copy from Approach 1, every parity check and the substrate read the on-disk files, not a git commit |
 | **P8** | **The draft template is Approach 1's current one.** `.agents/templates/draft.md` is replaced by a content-identical copy of `../code-orchestration/.agents/templates/draft.md`, including its Cost Basis line and Agent Tool Usage table (Q3, 2026-09-29). | Iteration 2. The copied template-engine tests pass unchanged, and Approach 2 drafts carry the same telemetry sections as Approach 1's |
 | **P9** | **`src/mcp_client.py` may gain type annotations only.** Iteration 7 adds the 9 missing annotations to the verbatim copy; this is the one permitted divergence from Approach 1's module (Q5, 2026-09-29). | Iteration 7. Behaviour and every result shape stay identical to Approach 1's `mcp_client.py`; only annotations differ |
+| **P10** | **API-key redaction stays Approach 1's.** `_ApiKeyRedactionFilter` masks the key in the log message only; exception tracebacks and stack text are logged in full, even if they contain the key (Q7, 2026-09-29: a proof of concept, where sensitive data may be logged for audit). | Iteration 3. The filter is moved verbatim, and no later iteration widens it |
 
 ---
 
@@ -127,7 +128,7 @@ These settle points that the design (Draft v7) left open. `SPECIFICATIONS.md` ap
 | 0 | Packaging and scaffolding | 1 | `pyproject.toml`, `uv.lock`, `src/`, `tests/`, git branch | ✅ Complete (2026-09-28, 16 tests) |
 | 1 | Project documents and working rules | 0 | `AGENTS.md`, `CLAUDE.md`, and docs tests covering `SPECIFICATIONS.md`, `DESIGN.md` and the workflow files | ✅ Complete (2026-09-28, 199 tests) |
 | 2 | Reused modules and triaged tests | 1 | Approach 1 modules and tests, per D-J | ✅ Complete (2026-09-29, 321 tests) |
-| 3 | Logging setup and correlation | 1 | `src/logging_setup.py` | ⏳ Pending |
+| 3 | Logging setup and correlation | 1 | `src/logging_setup.py` | ✅ Complete (2026-09-29, 364 tests) |
 | 4 | New and amended contracts | 2 | `src/schemas.py`, `src/credentials.py` | ⏳ Pending |
 | 5 | Guardrail checks | 3 | `src/guardrails.py` | ⏳ Pending |
 | 6 | Sub-agent runners and prompts | 3 | `src/agents.py` | ⏳ Pending |
@@ -819,3 +820,4 @@ Scenarios 3 to 7 check that **code** handles each decision-table path correctly.
 | P7 | 2, 6, 16 |
 | P8 | 2 |
 | P9 | 7 |
+| P10 | 3 |

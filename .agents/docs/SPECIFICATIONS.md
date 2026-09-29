@@ -1,7 +1,7 @@
 # HSE Easy — Approach 2 Specifications
 ## Research Analyst (Supervisor Agent-Orchestrated System)
 
-**Status:** Approved, 2026-09-28. This file consolidates the design plan (Draft v7) with decisions P1 to P9 from `IMPLEMENTATION_PLAN.md` §2.
+**Status:** Approved, 2026-09-28. This file consolidates the design plan (Draft v7) with decisions P1 to P10 from `IMPLEMENTATION_PLAN.md` §2.
 **SDK checked against:** `strands-agents 1.55.1`, the version locked in Approach 1's `uv.lock`.
 **Approach 1 (reference project):** `../code-orchestration/`, the folder next to `agent-orchestration/`. On this machine that is `C:\Users\Saksham\Git\poc\AIAgents\code-orchestration`. It is **read-only**. Its `src/`, `tests/`, `uv.lock`, `drafts/` and `.agents/docs/` are the baseline this project reuses and is benchmarked against.
 
@@ -26,7 +26,7 @@ Where they disagree, this file wins, and the disagreement is a stop condition (`
 | 5 | Architecture decisions D-A to D-J |
 | 6 | Data model |
 | 7 | Interfaces: tools, views, check order, CLI, logs, exit codes |
-| 8 | Decision log: Q1–Q12, DM1–DM18, P1–P9 |
+| 8 | Decision log: Q1–Q12, DM1–DM18, P1–P10 |
 
 ---
 
@@ -1013,7 +1013,7 @@ Exactly one MCP session is opened per run, and the exit-code mapping sits outsid
 | DM17 | Configuration | The attempt cap is fixed at 3; `ReasoningSettings` gains `supervisor`; `RunState` holds the configuration |
 | DM18 | Run result | `RunState` is the run's result, with `exit_code` and `supervisor_summary`; `PipelineRun` and `SupervisorReport` are removed; run totals are logged only; `ExitCode` (renamed) gains `SUPERVISOR_ERROR = 6` |
 
-#### 8.3 Implementation decisions (P1–P9)
+#### 8.3 Implementation decisions (P1–P10)
 
 These are recorded in `IMPLEMENTATION_PLAN.md` §2 and are applied throughout this file.
 
@@ -1028,8 +1028,9 @@ These are recorded in `IMPLEMENTATION_PLAN.md` §2 and are applied throughout th
 | P7 | **The Approach 1 baseline is the local working tree.** `../code-orchestration/` and `../mcp-server/` are used as they are on disk, uncommitted edits included; neither is committed or changed (`QUESTIONS.md` Q1, 2026-09-28) |
 | P8 | **The draft template is Approach 1's current one.** `.agents/templates/draft.md` is a content-identical copy of `../code-orchestration/.agents/templates/draft.md`, including its Cost Basis line and Agent Tool Usage table (`QUESTIONS.md` Q3, 2026-09-29) |
 | P9 | **`src/mcp_client.py` may gain type annotations only.** Iteration 7 adds the 9 missing annotations to the verbatim copy; this is the one permitted divergence from Approach 1's module (`QUESTIONS.md` Q5, 2026-09-29) |
+| P10 | **API-key redaction stays Approach 1's.** `_ApiKeyRedactionFilter` masks the key in the log message only; exception tracebacks and stack text are logged in full, even if they contain the key (`QUESTIONS.md` Q7, 2026-09-29: a proof of concept, where sensitive data may be logged for audit) |
 
-New decisions made during implementation are added to `IMPLEMENTATION_PLAN.md` §2 as P10, P11 and so on, and recorded here.
+New decisions made during implementation are added to `IMPLEMENTATION_PLAN.md` §2 as P11, P12 and so on, and recorded here.
 
 #### 8.4 Spike results
 

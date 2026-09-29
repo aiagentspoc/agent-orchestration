@@ -15,7 +15,7 @@ Before any analysis, read these. They are your criteria, and you apply every one
 2. `.agents/docs/IMPLEMENTATION_PLAN.md`:
    * §1.3, the Definition of Done;
    * §1.4, the stop conditions;
-   * §2, decisions P1 to P9;
+   * §2, decisions P1 to P10;
    * **this iteration's** Red list and acceptance criteria.
 
    Together these are what was promised.

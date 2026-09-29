@@ -41,7 +41,7 @@ _ISOLATED_ENV_VARS: Final[tuple[str, ...]] = (
 )
 
 #: The loggers ``configure_logging`` takes over. Restated here rather than
-#: imported from ``src.orchestrator`` so the fixture keeps working even while a
+#: imported from ``src.logging_setup`` so the fixture keeps working even while a
 #: test is asserting something about that constant.
 _ROUTED_LOGGER_NAMES: Final[tuple[str, ...]] = ("strands", "openai", "httpx", "mcp", "src")
 

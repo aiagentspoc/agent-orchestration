@@ -20,6 +20,7 @@ EXPECTED_MODULES = [
     "src.template_engine",
     "src.mcp_client",
     "src.telemetry",
+    "src.logging_setup",
 ]
 
 
