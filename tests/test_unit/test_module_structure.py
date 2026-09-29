@@ -21,6 +21,7 @@ EXPECTED_MODULES = [
     "src.mcp_client",
     "src.telemetry",
     "src.logging_setup",
+    "src.guardrails",
 ]
 
 

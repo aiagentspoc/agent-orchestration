@@ -9,6 +9,7 @@ reads nothing. These tests pin what the documents must agree on, in the order of
 * ``.claude/settings.json`` grants the sibling folders and enables both MCP servers;
 * nothing cites the scratchpad design plan that SPECIFICATIONS.md replaced;
 * SPECIFICATIONS.md holds its models, guardrails, exit codes, decisions, tables and tool descriptions;
+* the guardrail check order of §7.3 is the one the plan's Iteration 5 table states;
 * the tool binding (P1), the attempt cap, the forbidden terms and the removed models are stated consistently.
 
 Each scanning rule is a pure helper over text, with its own tests on synthetic strings, then applied to the files.
@@ -241,6 +242,20 @@ SUPERVISOR_TOOL_DESCRIPTIONS: dict[str, str] = {
         "WARNING may be saved at any attempt; ERROR only when no attempts remain. Returns the draft ID and path."
     ),
 }
+#: SPECIFICATIONS.md §7.3: each Supervisor tool's guardrails in check order; the first that fails is returned. For
+#: ``writer_tool``, ``initial_draft_exists`` applies when ``revise=False`` and the last two when ``revise=True``.
+GUARDRAIL_CHECK_ORDER: dict[str, tuple[str, ...]] = {
+    "scout_tool": ("scout_already_run", "invalid_scope"),
+    "writer_tool": (
+        "not_a_candidate", "already_saved", "attempt_limit", "initial_draft_exists", "not_audited", "revise_after_pass",
+    ),
+    "qa_tool": ("not_a_candidate", "already_saved", "no_draft", "already_audited"),
+    "save_draft": ("not_a_candidate", "already_saved", "not_audited", "error_with_attempts_remaining", "draft_ceiling"),
+}
+#: IMPLEMENTATION_PLAN.md Iteration 5 names each tool by the check function that guards it.
+_CHECK_FUNCTION_TOOLS: dict[str, str] = {
+    "check_scout": "scout_tool", "check_writer": "writer_tool", "check_qa": "qa_tool", "check_save": "save_draft",
+}
 
 _FENCED_BLOCK = re.compile(r"^[ \t]*```.*?^[ \t]*```[^\n]*$", re.MULTILINE | re.DOTALL)
 _MARKDOWN_LINK = re.compile(r"\[[^\]]*\]\(\s*([^)\s]+)(?:\s+\"[^\"]*\")?\s*\)")
@@ -248,6 +263,8 @@ _INLINE_CODE = re.compile(r"`([^`\n]+)`")
 _PYTHON_FENCE = re.compile(r"^```python\n(.*?)^```", re.MULTILINE | re.DOTALL)
 _CLASS_LINE = re.compile(r"^class (\w+).*$", re.MULTILINE)
 _TABLE_SEPARATOR_CELL = re.compile(r"^:?-{3,}:?$")
+#: A Markdown table's cell border: a ``|`` that is not escaped as ``\|``.
+_CELL_BORDER = re.compile(r"(?<!\\)\|")
 #: The number words that a prose statement of the cap may use instead of digits.
 _NUMBER_WORDS: dict[str, int] = {
     "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
@@ -402,15 +419,20 @@ def _literal_values(text: str, name: str) -> list[str]:
 def _table_rows(text: str) -> list[list[str]]:
     """Return the body rows of the Markdown table in ``text`` as lists of stripped cells.
 
-    The header row and the ``:---`` separator row are dropped. Cells are split on ``|``, which none of the
-    specification's tables uses inside a cell.
+    The header row and the ``:---`` separator row are dropped. Cells are split on each unescaped ``|``; an escaped
+    ``\\|``, a literal pipe in Markdown, stays inside its cell as written.
     """
     rows = [
-        [cell.strip() for cell in line.strip().strip("|").split("|")]
+        [cell.strip() for cell in _CELL_BORDER.split(line.strip().strip("|"))]
         for line in text.splitlines()
         if line.lstrip().startswith("|")
     ]
     return [cells for cells in rows[1:] if not all(_TABLE_SEPARATOR_CELL.match(cell) for cell in cells)]
+
+
+def _guardrails_in_order(cell: str) -> tuple[str, ...]:
+    """Return the guardrail names written in backticks in ``cell``, in order; other code spans are skipped."""
+    return tuple(token for token in _INLINE_CODE.findall(cell) if token in GUARDRAIL_NAMES)
 
 
 def _decisions_without_their_statement(section: str) -> list[str]:
@@ -750,6 +772,36 @@ def test_specification_states_the_four_supervisor_tool_descriptions_word_for_wor
     """§7.1's descriptions are what the Supervisor model sees, so they are benchmark constants, pinned here."""
     rows = _table_rows(_spec_section("#### 7.1 Supervisor tools", "#### 7.2"))
     assert [(cells[0].strip("`"), cells[1]) for cells in rows] == list(SUPERVISOR_TOOL_DESCRIPTIONS.items())
+
+
+def test_table_rows_keeps_an_escaped_pipe_inside_its_cell() -> None:
+    r"""A ``\|`` is a literal pipe in Markdown, as the plan's ``PipelineScope \| GuardrailViolation`` cell uses it."""
+    text = "| A | B |\n| :--- | :--- |\n| `x` → `P \\| G` | `y` |\n"
+    assert _table_rows(text) == [["`x` → `P \\| G`", "`y`"]]
+
+
+def test_guardrails_in_order_keeps_guardrail_names_and_drops_other_code_spans() -> None:
+    """Only the 12 names count: ``revise=False``, conditions and dates in the same cell are not guardrails."""
+    cell = "`attempt_limit` → if `revise=False`: `initial_draft_exists` (`drafts_saved >= config.max_drafts`) `2026`"
+    assert _guardrails_in_order(cell) == ("attempt_limit", "initial_draft_exists")
+
+
+def test_specification_states_the_guardrail_check_order() -> None:
+    """§7.3's check order is the one the guardrails implement (``tests/test_unit/test_guardrails.py`` precedence)."""
+    rows = _table_rows(_spec_section("#### 7.3 Guardrail check order", "`invalid_scope` covers these cases"))
+    assert {cells[0].strip("`"): _guardrails_in_order(cells[1]) for cells in rows} == GUARDRAIL_CHECK_ORDER
+
+
+def test_plan_iteration_5_table_states_the_same_check_order_as_the_specification() -> None:
+    """Iteration 5 AC3: the plan's check-order column matches §7.3, tool by tool."""
+    plan = _read(IMPLEMENTATION_PLAN_MD)
+    section = _between(plan, "#### Iteration 5", "Also add the rule 8 walk-through", IMPLEMENTATION_PLAN_MD)
+    order: dict[str, tuple[str, ...]] = {}
+    for cells in _table_rows(section):
+        function = re.match(r"`(check_\w+)\(", cells[0])
+        assert function is not None, f"no check function in {cells[0]!r}"
+        order[_CHECK_FUNCTION_TOOLS[function.group(1)]] = _guardrails_in_order(cells[1])
+    assert order == GUARDRAIL_CHECK_ORDER
 
 
 def test_partial_binding_claims_flags_restricted_tool_sets_but_not_prompt_boundaries() -> None:
