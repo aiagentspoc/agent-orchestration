@@ -42,17 +42,20 @@ from .guardrails import (
     WRITER_TOOL,
     ScoutArgs,
     check_qa,
+    check_save,
     check_scout,
     check_writer,
 )
 from .logging_setup import log_context
 from .mcp_client import HSEMockMCPClient, MCPClientError, MCPClientNotConnectedError, MCPConnectionError
+from .rendering import allocate_draft_id
 from .schemas import (
     AgentContext,
     AgentTelemetry,
     ArticleDraft,
     AttemptRecord,
     DocumentRecord,
+    DraftResult,
     FailureRecord,
     FailureStage,
     GuardrailViolation,
@@ -280,7 +283,31 @@ def build_tools(
     @tool(name=SAVE_DRAFT_TOOL, description=SAVE_DRAFT_TOOL_DESCRIPTION)
     def save_draft(doc_id: str) -> str:
         """Mark one document's latest audited draft as saved."""
-        raise NotImplementedError("save_draft is built in Iteration 10.")
+        with log_context(run_id=state.run_id, doc_id=doc_id):
+            violation = check_save(state, doc_id)
+            if violation is not None:
+                return _refuse(state, violation)
+            document = state.documents[doc_id]
+            # Resolved before the allocation, so a broken guardrail invariant raises with nothing marked saved.
+            latest, report = _save_target(document)
+            # Allocated before ``saved`` is set, so the document does not count an ID of its own (§6.8).
+            draft_id = allocate_draft_id(state)
+            document.saved = DraftResult(
+                doc_id=doc_id,
+                draft_id=draft_id,
+                path=state.config.drafts_dir / f"{draft_id}.md",
+                qa_status=report.status,
+            )
+            with log_context(attempt=latest.attempt):
+                _LOGGER.info(
+                    "Document marked saved: doc_id=%s draft_id=%s qa_status=%s attempts=%d (the draft of attempt %d)",
+                    doc_id,
+                    draft_id,
+                    report.status,
+                    document.attempts_used,
+                    latest.attempt,
+                )
+            return ToolResult[DraftResult](result=document.saved, run=state.snapshot()).for_supervisor()
 
     return [scout_tool, writer_tool, qa_tool, save_draft]
 
@@ -645,6 +672,25 @@ def _store_report(record: AttemptRecord, report: QAReport) -> None:
     _LOGGER.warning(
         "QA verdict %s: doc_id=%s attempt=%d issues=%s", report.status, record.doc_id, record.attempt, report.issues
     )
+
+
+def _save_target(document: DocumentRecord) -> tuple[AttemptRecord, QAReport]:
+    """Resolve what a ``save_draft`` call saves (D-C rule 9): the latest drafted attempt, and the QA report it carries.
+
+    :func:`~src.guardrails.check_save` refuses a call unless that report exists (``not_audited``). Resolving it
+    before the draft ID is allocated means that, were that invariant ever broken, the call would raise with nothing
+    allocated, marked saved or logged.
+
+    Raises:
+        RuntimeError: If the document has no latest draft, or that draft has no QA report.
+    """
+    latest = document.latest_drafted
+    if latest is None or latest.qa_report is None:
+        raise RuntimeError(
+            f"save_draft reached {document.candidate.update.doc_id!r} with no audited draft; "
+            "check_save admits only an audited latest draft."
+        )
+    return latest, latest.qa_report
 
 
 def _record_scout_success(state: RunState, scope: PipelineScope, report: ScoutReport) -> None:

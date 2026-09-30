@@ -217,20 +217,6 @@ def test_sources_is_a_list_of_plain_strings_so_an_unknown_source_reaches_code(st
     assert sources["items"] == {"type": "string"}
 
 
-@pytest.mark.parametrize(
-    ("name", "arguments", "iteration"),
-    [
-        ("save_draft", {"doc_id": "doc-a"}, "Iteration 10"),
-    ],
-)
-def test_the_later_tools_are_declared_but_not_yet_built(
-    state: RunState, name: str, arguments: dict[str, Any], iteration: str
-) -> None:
-    """Their contract is final now; their bodies are the named later iteration's."""
-    with pytest.raises(NotImplementedError, match=iteration):
-        _tools(state)[name](**arguments)
-
-
 def test_sub_agent_efforts_default_to_the_role_constants() -> None:
     """The compiled-in efforts of ``src.agents`` (D24) until the composition root resolves ``.env`` overrides."""
     assert SubAgentEfforts() == SubAgentEfforts(

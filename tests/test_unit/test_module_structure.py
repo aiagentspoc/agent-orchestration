@@ -24,6 +24,7 @@ EXPECTED_MODULES = [
     "src.guardrails",
     "src.agents",
     "src.tools",
+    "src.rendering",
 ]
 
 
