@@ -28,12 +28,14 @@ from src.mcp_client import HSEMockMCPClient, MCPClientNotConnectedError, MCPConn
 from src.schemas import AgentTelemetry, PipelineConfig, PipelineScope, RunContext, RunState, ScoutCandidate, ScoutReport
 from src.tools import SubAgentEfforts, SubAgentModels, build_tools
 from tests.support.scripted import (
+    FORBIDDEN_SUPERVISOR_KEYS,
     SCOPE_DATE_FROM,
     SCOPE_DATE_TO,
     SUBSTRATE_TOOL_NAMES,
     FailingModel,
     OfflineSubstrateSession,
     ScriptedModel,
+    json_keys,
     offline_client,
     pipeline_config,
     scout_candidate_args,
@@ -119,22 +121,6 @@ def state(tmp_path: Path) -> RunState:
     return _run_state(pipeline_config(tmp_path))
 
 
-#: D-F, §7.2: keys that would mean article text or a candidate reached the Supervisor. Matched as keys, at any depth,
-#: never as substrings: ``candidates`` is the ``ScoutReport``'s own field.
-FORBIDDEN_SUPERVISOR_KEYS: Final[frozenset[str]] = frozenset(
-    {"draft", "candidate", "headline", "article_body", "executive_summary"}
-)
-
-
-def _keys(value: Any) -> set[str]:
-    """Every key of every JSON object in ``value``, at any depth."""
-    if isinstance(value, dict):
-        return set(value) | {key for item in value.values() for key in _keys(item)}
-    if isinstance(value, list):
-        return {key for item in value for key in _keys(item)}
-    return set()
-
-
 def _assert_supervisor_view(state: RunState, returned: Any) -> None:
     """IMPLEMENTATION_PLAN.md Iteration 7 AC2 and D-F, for one result string a tool returned.
 
@@ -148,7 +134,7 @@ def _assert_supervisor_view(state: RunState, returned: Any) -> None:
     if decoded["result"] is not None:
         assert set(decoded["result"]) == {"candidates"}
         assert decoded["result"] == ScoutReport.model_validate(decoded["result"]).model_dump(mode="json")
-    assert _keys(decoded) & FORBIDDEN_SUPERVISOR_KEYS == set()
+    assert json_keys(decoded) & FORBIDDEN_SUPERVISOR_KEYS == set()
 
 
 class _CheckedTool:
@@ -234,7 +220,6 @@ def test_sources_is_a_list_of_plain_strings_so_an_unknown_source_reaches_code(st
 @pytest.mark.parametrize(
     ("name", "arguments", "iteration"),
     [
-        ("writer_tool", {"doc_id": "doc-a", "revise": False}, "Iteration 8"),
         ("qa_tool", {"doc_id": "doc-a"}, "Iteration 9"),
         ("save_draft", {"doc_id": "doc-a"}, "Iteration 10"),
     ],
@@ -860,8 +845,8 @@ def test_the_supervisor_view_check_rejects_an_extra_key_or_a_forbidden_key_at_an
 
 def test_the_supervisor_view_check_does_not_mistake_candidates_for_candidate(state: RunState) -> None:
     """Keys, not substrings: the report's ``candidates`` field is allowed; ``candidate`` alone is not."""
-    assert "candidate" not in _keys({"candidates": [{"update": {"doc_id": "candidate"}}]})
-    assert "candidate" in _keys({"x": [{"candidate": 1}]})
+    assert "candidate" not in json_keys({"candidates": [{"update": {"doc_id": "candidate"}}]})
+    assert "candidate" in json_keys({"x": [{"candidate": 1}]})
 
 
 def test_through_a_strands_agent_the_supervisor_receives_exactly_the_returned_string(state: RunState) -> None:

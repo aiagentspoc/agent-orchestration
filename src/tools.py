@@ -23,22 +23,29 @@ from .agents import (
     QA_LEGAL_REASONING_EFFORT,
     SCOUT_MODEL_ID,
     SCOUT_REASONING_EFFORT,
+    WRITER_MODEL_ID,
     WRITER_REASONING_EFFORT,
     build_scout_agent,
+    build_writer_agent,
     extract_telemetry,
     run_scout,
+    run_writer,
 )
 from .diagnostics import describe_exception, format_traceback, qualified_type_name
-from .guardrails import QA_TOOL, SAVE_DRAFT_TOOL, SCOUT_TOOL, WRITER_TOOL, ScoutArgs, check_scout
+from .guardrails import QA_TOOL, SAVE_DRAFT_TOOL, SCOUT_TOOL, WRITER_TOOL, ScoutArgs, check_scout, check_writer
 from .logging_setup import log_context
 from .mcp_client import HSEMockMCPClient, MCPClientError, MCPClientNotConnectedError, MCPConnectionError
 from .schemas import (
+    AgentContext,
     AgentTelemetry,
+    ArticleDraft,
+    AttemptRecord,
     DocumentRecord,
     FailureRecord,
     FailureStage,
     GuardrailViolation,
     PipelineScope,
+    QAReport,
     RemoteErrorDetail,
     RunState,
     ScoutReport,
@@ -55,6 +62,7 @@ __all__ = [
     "WRITER_TOOL_DESCRIPTION",
     "SubAgentEfforts",
     "SubAgentModels",
+    "WriterSourceFetchError",
     "build_tools",
 ]
 
@@ -66,6 +74,10 @@ MCP_LAUNCH_COMMAND: Final[str] = "uv run --quiet --directory <server_dir> fastmc
 
 #: The exceptions meaning the substrate session itself is lost (D-D). Anywhere in a failure's chain, they are fatal.
 _FATAL_ERRORS: Final[tuple[type[MCPClientError], ...]] = (MCPConnectionError, MCPClientNotConnectedError)
+
+#: The substrate tool the Writer must call to dereference its candidate (D-C rule 2, Approach 1 D23). Named here
+#: because ``writer_tool`` checks the call's telemetry for it.
+_SOURCE_FETCH_TOOL: Final[str] = "get_document_by_id"
 
 _PayloadT = TypeVar("_PayloadT", bound=BaseModel)
 
@@ -94,6 +106,15 @@ SAVE_DRAFT_TOOL_DESCRIPTION: Final[str] = (
     "Mark one document's latest audited draft as saved. The draft file is written when the run ends. PASS and "
     "WARNING may be saved at any attempt; ERROR only when no attempts remain. Returns the draft ID and path."
 )
+
+
+class WriterSourceFetchError(RuntimeError):
+    """The Writer did not demonstrably write from the document it was given (D-C rule 2, Approach 1 D23).
+
+    Raised by ``writer_tool``, never by :mod:`src.agents`: a sub-agent has no authority over whether its own
+    draft counts. It is recorded as :data:`~src.schemas.FailureStage` ``fetch_document`` because that is what
+    failed, the dereference of the candidate's ``doc_id``, even though the call was the Writer's to make.
+    """
 
 
 @dataclass(frozen=True)
@@ -180,7 +201,38 @@ def build_tools(
     @tool(name=WRITER_TOOL, description=WRITER_TOOL_DESCRIPTION)
     def writer_tool(doc_id: str, revise: bool) -> str:
         """Run the Writer on one candidate: a first draft, or a revision of the latest draft."""
-        raise NotImplementedError("writer_tool is built in Iteration 8.")
+        with log_context(run_id=state.run_id, doc_id=doc_id):
+            violation = check_writer(state, doc_id, revise)
+            if violation is not None:
+                return _refuse(state, violation)
+            document = state.documents[doc_id]
+            # Resolved before the append, so a broken guardrail invariant raises with no attempt used.
+            revision = _revision_source(document) if revise else None
+            # D-C rule 3: the attempt counts from here, whether the call then succeeds or fails.
+            record = AttemptRecord(
+                context=AgentContext(today=state.context.today),
+                candidate=document.candidate,
+                attempt=document.attempts_used + 1,
+            )
+            document.attempts.append(record)
+            with log_context(attempt=record.attempt):
+                writer_input = record if revision is None else _revision_input(revision, record)
+                output = _invoke_sub_agent(
+                    state,
+                    client,
+                    tool_name=WRITER_TOOL,
+                    stage="writer",
+                    model_id=WRITER_MODEL_ID,
+                    reasoning_effort=efforts.writer,
+                    build=lambda: build_writer_agent(models.writer, client, hooks=hooks),
+                    run=lambda agent: run_writer(
+                        agent, writer_input, model_id=WRITER_MODEL_ID, reasoning_effort=efforts.writer
+                    ),
+                    doc_id=doc_id,
+                    attempt=record.attempt,
+                )
+                error = output.error if isinstance(output, _SubAgentFailure) else _store_draft(state, record, output)
+                return ToolResult[AttemptRecord](result=record, run=state.snapshot(), error=error).for_supervisor()
 
     @tool(name=QA_TOOL, description=QA_TOOL_DESCRIPTION)
     def qa_tool(doc_id: str) -> str:
@@ -340,13 +392,14 @@ def _recoverable_failure(
     exc: Exception,
     *,
     tool_name: str,
-    stage: _SubAgentStage,
+    stage: FailureStage,
     doc_id: str | None,
     attempt: int | None,
 ) -> _SubAgentFailure:
-    """Record an ordinary sub-agent failure in full and summarise it for the Supervisor (§6.7, D-I).
+    """Record a recoverable failure in full and summarise it for the Supervisor (§6.7, D-I).
 
-    The run goes on: the Supervisor decides what to do with the failed call.
+    An ordinary sub-agent failure, or a Writer draft that fails D-C rule 2. The run goes on: the Supervisor decides
+    what to do with the failed call.
     """
     failure = _failure_record(stage, exc, doc_id=doc_id, attempt=attempt)
     state.failures.append(failure)
@@ -411,6 +464,114 @@ def _substrate_tools_used(output: WorkerOutput[_PayloadT]) -> str:
     output_tool = type(output.payload).__name__
     used = [f"{t.tool_name} x{t.call_count}" for t in output.telemetry.tool_invocations if t.tool_name != output_tool]
     return "[" + ", ".join(used) + "]"
+
+
+@dataclass(frozen=True)
+class _Revision:
+    """What a revision revises (D-E): the latest drafted attempt, and the QA report it carries."""
+
+    source: AttemptRecord
+    report: QAReport
+
+
+def _revision_source(document: DocumentRecord) -> _Revision:
+    """Resolve what a ``revise=true`` call revises, before its new attempt is appended.
+
+    :func:`~src.guardrails.check_writer` refuses ``revise=true`` unless the latest draft carries a QA report
+    (``not_audited``). Resolving it before the append means that, were that invariant ever broken, the call would
+    raise with no attempt used rather than leave an attempt with no ledger entry or failure record.
+
+    Raises:
+        RuntimeError: If the document has no latest draft, or that draft has no QA report.
+    """
+    latest = document.latest_drafted
+    if latest is None or latest.qa_report is None:
+        raise RuntimeError(
+            f"writer_tool reached a revision of {document.candidate.update.doc_id!r} with no audited draft; "
+            "check_writer admits only an audited revision."
+        )
+    return _Revision(source=latest, report=latest.qa_report)
+
+
+def _revision_input(revision: _Revision, record: AttemptRecord) -> AttemptRecord:
+    """The Writer's input for a revision (D-E): the latest drafted attempt, with its draft and QA report; logged.
+
+    Logged once ``record``, the new attempt, has been appended, so the line carries its number.
+    """
+    _LOGGER.info(
+        "Revision requested: doc_id=%s attempt=%d follows=%s (the QA report on attempt %d)",
+        record.doc_id,
+        record.attempt,
+        revision.report.status,
+        revision.source.attempt,
+    )
+    return revision.source
+
+
+def _store_draft(state: RunState, record: AttemptRecord, output: WorkerOutput[ArticleDraft]) -> str | None:
+    """Keep the Writer's draft on its attempt only if the Writer dereferenced its source (D-C rule 2).
+
+    A draft that fails the check is not kept: the attempt stays without one, and a ``fetch_document`` failure is
+    recorded. The call's ledger entry was already written by :func:`_invoke_sub_agent`, so the tokens it spent are
+    counted once either way.
+
+    Args:
+        state: The run state any failure is appended to.
+        record: The new attempt the call used, whose empty ``draft`` slot the draft fills.
+        output: The Writer's draft and the telemetry of the same call.
+
+    Returns:
+        ``None`` when the draft was stored, or the one-line error for the Supervisor.
+    """
+    try:
+        _verify_writer_dereferenced_source(output.payload, output.telemetry, record.doc_id)
+    except WriterSourceFetchError as exc:
+        failure = _recoverable_failure(
+            state, exc, tool_name=WRITER_TOOL, stage="fetch_document", doc_id=record.doc_id, attempt=record.attempt
+        )
+        return failure.error
+    record.set_draft(output.payload)
+    return None
+
+
+def _verify_writer_dereferenced_source(draft: ArticleDraft, telemetry: AgentTelemetry, doc_id: str) -> None:
+    """Check, code-side, that the Writer really fetched and named its own source (Approach 1's check, unchanged).
+
+    A substrate tool error inside the Writer's turn is returned to the **model**, never raised to Python, so the
+    returned ``ArticleDraft`` looks the same either way. Two independent signals are checked:
+
+    1. **The call's telemetry names the tool.** A Writer that never called ``get_document_by_id`` drafted from the
+       Scout's triage summary, which its own prompt disqualifies as a source. The call's argument is not checked.
+    2. **The draft's provenance matches the candidate.** The Writer is contracted to return an empty
+       ``source_doc_id`` when its fetch fails, so empty means "reported failure", and a different slug means the
+       draft is about another document.
+
+    Neither catches a Writer that calls the tool, receives an error and fabricates an article while echoing the
+    right ID; QA-Legal is the backstop for that.
+
+    Args:
+        draft: The draft the Writer returned.
+        telemetry: That same call's telemetry.
+        doc_id: The candidate's ``doc_id``, which the Supervisor chose.
+
+    Raises:
+        WriterSourceFetchError: If either check fails.
+    """
+    fetched = any(
+        invocation.tool_name == _SOURCE_FETCH_TOOL and invocation.call_count > 0
+        for invocation in telemetry.tool_invocations
+    )
+    if not fetched:
+        raise WriterSourceFetchError(
+            f"The Writer produced a draft for {doc_id!r} without calling {_SOURCE_FETCH_TOOL} at all; "
+            f"tools invoked: {[invocation.tool_name for invocation in telemetry.tool_invocations]}."
+        )
+    if draft.source_doc_id != doc_id:
+        raise WriterSourceFetchError(
+            f"The Writer returned source_doc_id {draft.source_doc_id!r} for candidate {doc_id!r}; "
+            "an empty value is its contracted report of a failed fetch and a different value means "
+            "the draft is not about the document it was given."
+        )
 
 
 def _record_scout_success(state: RunState, scope: PipelineScope, report: ScoutReport) -> None:

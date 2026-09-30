@@ -776,3 +776,23 @@ def scripted_model_builder_by_effort(models: Mapping[tuple[str, str | None], Mod
         return models[key]
 
     return build
+
+
+# ---------------------------------------------------------------------------
+# What a Supervisor tool may return (SPECIFICATIONS.md D-F, §7.2)
+# ---------------------------------------------------------------------------
+
+#: Keys that would mean article text or a candidate reached the Supervisor. Matched as keys, at any depth, never as
+#: substrings: ``candidates`` is the ``ScoutReport``'s own field.
+FORBIDDEN_SUPERVISOR_KEYS: Final[frozenset[str]] = frozenset(
+    {"draft", "candidate", "headline", "article_body", "executive_summary"}
+)
+
+
+def json_keys(value: Any) -> set[str]:
+    """Every key of every JSON object in ``value``, at any depth."""
+    if isinstance(value, dict):
+        return set(value) | {key for item in value.values() for key in json_keys(item)}
+    if isinstance(value, list):
+        return {key for item in value for key in json_keys(item)}
+    return set()
