@@ -23,6 +23,7 @@ EXPECTED_MODULES = [
     "src.logging_setup",
     "src.guardrails",
     "src.agents",
+    "src.tools",
 ]
 
 

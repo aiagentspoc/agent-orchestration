@@ -13,7 +13,7 @@ one definition of every scripted payload rather than adding a third copy.
 import copy
 import json
 import re
-from collections.abc import AsyncIterator, Iterable, Sequence
+from collections.abc import AsyncIterator, Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any, Final
 
@@ -23,6 +23,7 @@ from strands.types.tools import AgentTool
 
 from src.agents import QA_LEGAL_MODEL_ID, SCOUT_MODEL_ID, WRITER_MODEL_ID
 from src.mcp_client import HSEMockMCPClient
+from src.model_factory import ModelBuilder
 from src.schemas import ModelRate, PipelineConfig
 
 # ---------------------------------------------------------------------------
@@ -298,7 +299,7 @@ class RecordingMCPSession:
         return [tool_obj for name, tool_obj in STUB_TOOLS.items() if name in allowed]
 
 
-def offline_client(session: RecordingMCPSession) -> HSEMockMCPClient:
+def offline_client(session: "RecordingMCPSession | OfflineSubstrateSession") -> HSEMockMCPClient:
     """Build an ``HSEMockMCPClient`` wired to an offline session stub."""
     client = HSEMockMCPClient()
     client.mcp_client = session
@@ -373,13 +374,13 @@ class OfflineSubstrateSession:
         raise_on: set[str] | None = None,
         raise_with: Exception | None = None,
         raise_on_call_index: int | None = None,
-        fail_listing_with: Exception | None = None,
+        fail_listing_with: BaseException | None = None,
         fail_listing_on: Iterable[int] | None = None,
     ) -> None:
         self.raise_on: set[str] = set(raise_on or ())
         self.raise_with: Exception | None = raise_with
         self.raise_on_call_index: int | None = raise_on_call_index
-        self.fail_listing_with: Exception | None = fail_listing_with
+        self.fail_listing_with: BaseException | None = fail_listing_with
         self.fail_listing_on: set[int] | None = None if fail_listing_on is None else set(fail_listing_on)
         self.tool_filters_seen: list[dict[str, Any] | None] = []
         self.calls: list[tuple[str, dict[str, Any]]] = []
@@ -738,3 +739,40 @@ def pipeline_config(tmp_path: Path, **overrides: Any) -> PipelineConfig:
     }
     values.update(overrides)
     return PipelineConfig(**values)
+
+
+def scripted_model_builder(fast: Model, strong: Model) -> ModelBuilder:
+    """Return a ``model_builder`` handing out one scripted model per model ID.
+
+    Approach 1's form, restored against :class:`src.model_factory.ModelBuilder`: the Scout's ``gpt-5-mini`` gets
+    ``fast`` and every ``gpt-5.4`` role gets ``strong``, so the roles sharing that ID consume one script in strict
+    call order. ``reasoning_effort`` is accepted and ignored, which keeps that singleton.
+    """
+
+    def build(model_id: str, *, reasoning_effort: str | None = None) -> Model:
+        return fast if model_id == SCOUT_MODEL_ID else strong
+
+    return build
+
+
+def scripted_model_builder_by_effort(models: Mapping[tuple[str, str | None], Model]) -> ModelBuilder:
+    """Return a ``model_builder`` keyed on ``(model_id, reasoning_effort)``, failing on any key not scripted.
+
+    At the default efforts this separates the Scout ``(gpt-5-mini, None)``, the Writer ``(gpt-5.4, high)`` and
+    QA-Legal ``(gpt-5.4, medium)``. It cannot separate QA-Legal from the Supervisor, which is also
+    ``(gpt-5.4, medium)`` by default: a test that needs both scripted apart must give one of them another effort.
+
+    Args:
+        models: The scripted model for each ``(model_id, reasoning_effort)`` a test expects to be built.
+
+    Returns:
+        The builder. Asking it for an unscripted key raises ``AssertionError`` naming the key.
+    """
+
+    def build(model_id: str, *, reasoning_effort: str | None = None) -> Model:
+        key = (model_id, reasoning_effort)
+        if key not in models:
+            raise AssertionError(f"No scripted model for {key!r}; scripted: {sorted(models, key=repr)!r}")
+        return models[key]
+
+    return build

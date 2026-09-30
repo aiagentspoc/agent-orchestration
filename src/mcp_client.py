@@ -11,6 +11,7 @@ exception imports out of ``src/orchestrator.py`` (D13).
 import json
 import os
 from collections.abc import Sequence
+from types import TracebackType
 from typing import Any
 
 from mcp.shared.exceptions import MCPError as TransportProtocolError
@@ -74,7 +75,7 @@ def _describe_tool_result(tool_name: str, result: dict[str, Any]) -> str:
 class HSEMockMCPClient:
     """Mock MCP Client wrapping Strands MCPClient."""
     
-    def __init__(self):
+    def __init__(self) -> None:
         self.server_dir = os.environ.get("HSE_MCP_SERVER_PATH", r"C:\Users\Saksham\Git\poc\AIAgents\mcp-server")
         clients = MCPClient.load_servers({
             "mock": {
@@ -86,7 +87,7 @@ class HSEMockMCPClient:
         self.mcp_client = clients[0]
         self._connected = False
 
-    def start(self):
+    def start(self) -> None:
         """Explicitly start the MCP client subprocess.
 
         Raises:
@@ -102,19 +103,21 @@ class HSEMockMCPClient:
             ) from exc
         self._connected = True
 
-    def stop(self):
+    def stop(self) -> None:
         """Explicitly stop the MCP client subprocess."""
         self.mcp_client.__exit__(None, None, None)
         self._connected = False
 
-    def __enter__(self):
+    def __enter__(self) -> "HSEMockMCPClient":
         self.start()
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(
+        self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: TracebackType | None
+    ) -> None:
         self.stop()
 
-    def _ensure_connected(self):
+    def _ensure_connected(self) -> None:
         if not self._connected:
             raise MCPClientNotConnectedError("Client not connected. Call start() or use context manager.")
 

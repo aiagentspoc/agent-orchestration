@@ -10,14 +10,14 @@ rewriting and no ``api-version`` handling. Construction opens no socket;
 Strands builds a fresh HTTP client per request.
 """
 
-from typing import Any, Final
+from typing import Any, Final, Protocol
 
 from strands.models.model import Model
 from strands.models.openai import OpenAIModel
 
 from .credentials import CredentialManager
 
-__all__ = ["build_model"]
+__all__ = ["ModelBuilder", "build_model"]
 
 #: The provider's accepted reasoning-effort values, per ``openai``'s
 #: ``CompletionCreateParamsBase``. The set lives here because this module's
@@ -27,6 +27,29 @@ __all__ = ["build_model"]
 _REASONING_EFFORTS: Final[frozenset[str]] = frozenset(
     {"none", "minimal", "low", "medium", "high", "xhigh", "max"}
 )
+
+
+class ModelBuilder(Protocol):
+    """Builds the ``Model`` for one pipeline role.
+
+    A ``Protocol`` rather than the former ``Callable[[str], Model]`` alias because
+    D24 makes reasoning effort a property of the *role*, not of the model ID: the
+    Writer and QA-Legal both bind ``gpt-5.4`` and want different efforts, so the
+    effort has to travel with the construction request.
+    """
+
+    def __call__(self, model_id: str, *, reasoning_effort: str | None = None) -> Model:
+        """Return the model for ``model_id``, built at ``reasoning_effort``.
+
+        Args:
+            model_id: A pipeline model ID from ARCHITECTURE §3.
+            reasoning_effort: The already-resolved effort for the role being
+                built, or ``None`` to leave it off the request entirely.
+
+        Returns:
+            A provider-agnostic ``Model``.
+        """
+        ...
 
 
 def build_model(
