@@ -20,19 +20,31 @@ from strands.models.model import Model
 from strands.types.tools import AgentTool
 
 from .agents import (
+    QA_LEGAL_MODEL_ID,
     QA_LEGAL_REASONING_EFFORT,
     SCOUT_MODEL_ID,
     SCOUT_REASONING_EFFORT,
     WRITER_MODEL_ID,
     WRITER_REASONING_EFFORT,
+    build_qa_legal_agent,
     build_scout_agent,
     build_writer_agent,
     extract_telemetry,
+    run_qa_legal,
     run_scout,
     run_writer,
 )
 from .diagnostics import describe_exception, format_traceback, qualified_type_name
-from .guardrails import QA_TOOL, SAVE_DRAFT_TOOL, SCOUT_TOOL, WRITER_TOOL, ScoutArgs, check_scout, check_writer
+from .guardrails import (
+    QA_TOOL,
+    SAVE_DRAFT_TOOL,
+    SCOUT_TOOL,
+    WRITER_TOOL,
+    ScoutArgs,
+    check_qa,
+    check_scout,
+    check_writer,
+)
 from .logging_setup import log_context
 from .mcp_client import HSEMockMCPClient, MCPClientError, MCPClientNotConnectedError, MCPConnectionError
 from .schemas import (
@@ -237,7 +249,33 @@ def build_tools(
     @tool(name=QA_TOOL, description=QA_TOOL_DESCRIPTION)
     def qa_tool(doc_id: str) -> str:
         """Run QA-Legal on the latest draft of one document."""
-        raise NotImplementedError("qa_tool is built in Iteration 9.")
+        with log_context(run_id=state.run_id, doc_id=doc_id):
+            violation = check_qa(state, doc_id)
+            if violation is not None:
+                return _refuse(state, violation)
+            # Resolved before any sub-agent is built, so a broken guardrail invariant raises with nothing spent.
+            latest = _audit_target(state.documents[doc_id])
+            with log_context(attempt=latest.attempt):
+                output = _invoke_sub_agent(
+                    state,
+                    client,
+                    tool_name=QA_TOOL,
+                    stage="qa_legal",
+                    model_id=QA_LEGAL_MODEL_ID,
+                    reasoning_effort=efforts.qa_legal,
+                    build=lambda: build_qa_legal_agent(models.qa_legal, client, hooks=hooks),
+                    run=lambda agent: run_qa_legal(
+                        agent, latest, model_id=QA_LEGAL_MODEL_ID, reasoning_effort=efforts.qa_legal
+                    ),
+                    doc_id=doc_id,
+                    attempt=latest.attempt,
+                )
+                error: str | None = None
+                if isinstance(output, _SubAgentFailure):
+                    error = output.error
+                else:
+                    _store_report(latest, output.payload)
+                return ToolResult[AttemptRecord](result=latest, run=state.snapshot(), error=error).for_supervisor()
 
     @tool(name=SAVE_DRAFT_TOOL, description=SAVE_DRAFT_TOOL_DESCRIPTION)
     def save_draft(doc_id: str) -> str:
@@ -572,6 +610,41 @@ def _verify_writer_dereferenced_source(draft: ArticleDraft, telemetry: AgentTele
             "an empty value is its contracted report of a failed fetch and a different value means "
             "the draft is not about the document it was given."
         )
+
+
+def _audit_target(document: DocumentRecord) -> AttemptRecord:
+    """Resolve what a ``qa_tool`` call audits (D-C rule 8): the latest drafted attempt, which has no QA report yet.
+
+    :func:`~src.guardrails.check_qa` refuses a call unless that holds (``no_draft``, ``already_audited``). Resolving
+    it before QA-Legal is built means that, were that invariant ever broken, the call would raise with no agent
+    built, no token spent and no ledger entry, rather than fail in :meth:`~src.schemas.AttemptRecord.set_qa_report`
+    after the audit.
+
+    Raises:
+        RuntimeError: If the document has no latest draft, or that draft already has a QA report.
+    """
+    latest = document.latest_drafted
+    if latest is None or latest.qa_report is not None:
+        raise RuntimeError(
+            f"qa_tool reached {document.candidate.update.doc_id!r} with no unaudited draft; "
+            "check_qa admits only an unaudited latest draft."
+        )
+    return latest
+
+
+def _store_report(record: AttemptRecord, report: QAReport) -> None:
+    """Store QA-Legal's report, as issued, on the attempt it audited, and log the verdict at its D-I level.
+
+    ``PASS`` is logged at INFO; ``WARNING`` or ``ERROR`` at WARNING, with every issue rather than their count. The
+    level is the only thing the status decides here: what to do with the report is the Supervisor's decision.
+    """
+    record.set_qa_report(report)
+    if report.status == "PASS":
+        _LOGGER.info("QA verdict PASS: doc_id=%s attempt=%d", record.doc_id, record.attempt)
+        return
+    _LOGGER.warning(
+        "QA verdict %s: doc_id=%s attempt=%d issues=%s", report.status, record.doc_id, record.attempt, report.issues
+    )
 
 
 def _record_scout_success(state: RunState, scope: PipelineScope, report: ScoutReport) -> None:

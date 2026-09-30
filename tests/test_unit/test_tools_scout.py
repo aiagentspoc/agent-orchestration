@@ -220,7 +220,6 @@ def test_sources_is_a_list_of_plain_strings_so_an_unknown_source_reaches_code(st
 @pytest.mark.parametrize(
     ("name", "arguments", "iteration"),
     [
-        ("qa_tool", {"doc_id": "doc-a"}, "Iteration 9"),
         ("save_draft", {"doc_id": "doc-a"}, "Iteration 10"),
     ],
 )

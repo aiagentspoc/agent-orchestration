@@ -134,7 +134,7 @@ These settle points that the design (Draft v7) left open. `SPECIFICATIONS.md` ap
 | 6 | Sub-agent runners and prompts | 3 | `src/agents.py` | ✅ Complete (2026-09-29, 742 tests) |
 | 7 | Tool wrapper core and `scout_tool` | 3 | `src/tools.py` | ✅ Complete (2026-09-30, 850 tests) |
 | 8 | `writer_tool` | 3 | `src/tools.py` | ✅ Complete (2026-09-30, 925 tests) |
-| 9 | `qa_tool` | 3 | `src/tools.py` | ⏳ Pending |
+| 9 | `qa_tool` | 3 | `src/tools.py` | ✅ Complete (2026-09-30, 999 tests) |
 | 10 | `save_draft` and draft ID allocation | 3 | `src/tools.py`, `src/rendering.py` | ⏳ Pending |
 | 11 | End-of-run reconciliation and rendering | 3 | `src/rendering.py`, `src/telemetry.py` | ⏳ Pending |
 | 12 | SDK spike: fatal stop and logging hooks | 4 | `src/hooks.py`, SDK contract tests | ⏳ Pending |
