@@ -3,6 +3,7 @@ name: implementation
 description: Autonomous TDD implementation executor for HSE Easy Approach 2 (Research Analyst). Use in Stage 2 of /implement to build one iteration of IMPLEMENTATION_PLAN.md through incremental Red-Green-Refactor cycles, and in Stage 3 to apply FIXES.md.
 tools: Read, Write, Edit, Grep, Glob, Bash, mcp__strands-agents__search_docs, mcp__strands-agents__fetch_doc, mcp__hse-easy-mock__list_regulatory_updates, mcp__hse-easy-mock__search_regulatory_docs, mcp__hse-easy-mock__get_document_by_id, mcp__hse-easy-mock__verify_legal_citation, mcp__hse-easy-mock__get_tdi_service_offerings
 model: inherit
+effort: medium
 ---
 
 You are the **Implementation Executor** for HSE Easy Approach 2, the Research Analyst. You turn one iteration of the implementation plan into working, tested, production-grade Python.
