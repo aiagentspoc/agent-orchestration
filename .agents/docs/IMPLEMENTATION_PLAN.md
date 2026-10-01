@@ -118,6 +118,8 @@ These settle points that the design (Draft v7) left open. `SPECIFICATIONS.md` ap
 | **P8** | **The draft template is Approach 1's current one.** `.agents/templates/draft.md` is replaced by a content-identical copy of `../code-orchestration/.agents/templates/draft.md`, including its Cost Basis line and Agent Tool Usage table (Q3, 2026-09-29). | Iteration 2. The copied template-engine tests pass unchanged, and Approach 2 drafts carry the same telemetry sections as Approach 1's |
 | **P9** | **`src/mcp_client.py` may gain type annotations only.** Iteration 7 adds the 9 missing annotations to the verbatim copy; this is the one permitted divergence from Approach 1's module (Q5, 2026-09-29). | Iteration 7. Behaviour and every result shape stay identical to Approach 1's `mcp_client.py`; only annotations differ |
 | **P10** | **API-key redaction stays Approach 1's.** `_ApiKeyRedactionFilter` masks the key in the log message only; exception tracebacks and stack text are logged in full, even if they contain the key (Q7, 2026-09-29: a proof of concept, where sensitive data may be logged for audit). | Iteration 3. The filter is moved verbatim, and no later iteration widens it |
+| **P11** | **Per-draft latency counts only the Supervisor's own time.** `DraftMetadata.latency_seconds` = the draft's own `writer`/`qa_legal` durations + its Scout share + an equal share of `max(supervisor.total_duration_seconds − Σ supervisor.tool_invocations.total_time_seconds, 0)`. The `stage_telemetry` entries stay exactly as `amortise_shared_telemetry` produces them (Q8, 2026-10-01). | Iteration 11. The Supervisor's duration already contains every sub-agent call, so the literal §6.8 sum would count it twice; per-draft times then mean what Approach 1's mean |
+| **P12** | **Run totals are logged once, on "Run completed".** `finalise_run(state, *, supervisor_telemetry, rates)` keeps its signature, computes the run's tokens and cost and returns them with `persistence_failed`, and logs no totals line. The composition root measures wall-clock and logs all three on "Run completed" (Q9, 2026-10-01). | Iterations 11 and 14. D-I wins over the plan's Iteration 11 wording; DM18 holds, since nothing is stored on `RunState` |
 
 ---
 
@@ -136,7 +138,7 @@ These settle points that the design (Draft v7) left open. `SPECIFICATIONS.md` ap
 | 8 | `writer_tool` | 3 | `src/tools.py` | ✅ Complete (2026-09-30, 925 tests) |
 | 9 | `qa_tool` | 3 | `src/tools.py` | ✅ Complete (2026-09-30, 999 tests) |
 | 10 | `save_draft` and draft ID allocation | 3 | `src/tools.py`, `src/rendering.py` | ✅ Complete (2026-09-30, 1038 tests) |
-| 11 | End-of-run reconciliation and rendering | 3 | `src/rendering.py`, `src/telemetry.py` | ⏳ Pending |
+| 11 | End-of-run reconciliation and rendering | 3 | `src/rendering.py`, `src/telemetry.py` | ✅ Complete (2026-10-01, 1068 tests) |
 | 12 | SDK spike: fatal stop and logging hooks | 4 | `src/hooks.py`, SDK contract tests | ⏳ Pending |
 | 13 | Supervisor agent | 4 | `src/supervisor.py` | ⏳ Pending |
 | 14 | Composition root and CLI | 4 | `src/app.py`, `src/cli.py` | ⏳ Pending |

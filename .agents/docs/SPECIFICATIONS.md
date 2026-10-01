@@ -1,7 +1,7 @@
 # HSE Easy — Approach 2 Specifications
 ## Research Analyst (Supervisor Agent-Orchestrated System)
 
-**Status:** Approved, 2026-09-28. This file consolidates the design plan (Draft v7) with decisions P1 to P10 from `IMPLEMENTATION_PLAN.md` §2.
+**Status:** Approved, 2026-09-28. This file consolidates the design plan (Draft v7) with decisions P1 to P12 from `IMPLEMENTATION_PLAN.md` §2.
 **SDK checked against:** `strands-agents 1.55.1`, the version locked in Approach 1's `uv.lock`.
 **Approach 1 (reference project):** `../code-orchestration/`, the folder next to `agent-orchestration/`. On this machine that is `C:\Users\Saksham\Git\poc\AIAgents\code-orchestration`. It is **read-only**. Its `src/`, `tests/`, `uv.lock`, `drafts/` and `.agents/docs/` are the baseline this project reuses and is benchmarked against.
 
@@ -26,7 +26,7 @@ Where they disagree, this file wins, and the disagreement is a stop condition (`
 | 5 | Architecture decisions D-A to D-J |
 | 6 | Data model |
 | 7 | Interfaces: tools, views, check order, CLI, logs, exit codes |
-| 8 | Decision log: Q1–Q12, DM1–DM18, P1–P10 |
+| 8 | Decision log: Q1–Q12, DM1–DM18, P1–P12 |
 
 ---
 
@@ -269,7 +269,8 @@ Every `ToolResult` also carries a `RunContext` snapshot (today, the attempt cap,
 
 **Latency and totals.**
 * Because the Supervisor may interleave work on several documents, **per-run wall-clock** is the primary latency figure; per-draft latency is best-effort.
-* Run totals (tokens, cost, wall-clock) are logged at run end, as in Approach 1, and are not stored.
+* Run totals (tokens, cost, wall-clock) are logged once at run end, as in Approach 1, and are not stored. `finalise_run` computes the run's tokens and cost and returns them; the composition root logs them once, on "Run completed", with the wall-clock it measures (P12).
+* Per-draft latency counts the Supervisor's own time only, its duration less the time spent in its tools, so no sub-agent call is counted twice (P11).
 * The benchmark reports exactly Approach 1's metrics (Q8 = D).
 
 #### D-C. Hard guardrails in code
@@ -489,7 +490,7 @@ There is no `preserve_context` and no `delegate`. Every call starts from a fresh
 | **INFO** | Revision requested | `doc_id`, the new `attempt`, the QA status it follows |
 | **INFO** | Document marked saved | `doc_id`, draft ID, QA status, attempts |
 | **INFO** | Draft rendered (run end) | Draft ID, path, `doc_id`, tokens, cost |
-| **INFO** | Run completed | Exit code, drafts saved, failures, guardrail violations, total tokens and cost, wall-clock, the Supervisor's summary |
+| **INFO** | Run completed | Exit code, drafts saved, failures, guardrail violations, total tokens and cost, wall-clock (P12), the Supervisor's summary |
 | **WARNING** | QA verdict `WARNING` or `ERROR` | `doc_id`, `attempt`, issues |
 | **WARNING** | Draft rendered with `[UNRESOLVED COMPLIANCE ALERT]` | Draft ID, `doc_id`, attempts used, unresolved issues |
 | **WARNING** | Guardrail violation | Guardrail name, tool, `doc_id`, message |
@@ -816,7 +817,8 @@ class DraftMetadata:                    # [Amended] only the approach_name defau
     approach_name: str = "Approach 2 (Research Analyst)"   # default changed (Q9 = C)
     qa_report: QAReport                 # the saved draft's QA report
     attempts: int                       # DocumentRecord.attempts_used (D-C rule 11)
-    latency_seconds: float              # this document's calls plus its share of Scout and Supervisor, best-effort
+    latency_seconds: float              # own writer/qa_legal durations + Scout share + equal share of the
+                                        # Supervisor's own time, max(duration − Σ tool_invocations time, 0) (P11)
     estimated_cost: float               # this document's calls plus an equal share of Scout and Supervisor (D-B)
     total_tokens: int
     unresolved_errors: list[str] = []   # QA issues when the saved status is ERROR → compliance banner
@@ -1013,7 +1015,7 @@ Exactly one MCP session is opened per run, and the exit-code mapping sits outsid
 | DM17 | Configuration | The attempt cap is fixed at 3; `ReasoningSettings` gains `supervisor`; `RunState` holds the configuration |
 | DM18 | Run result | `RunState` is the run's result, with `exit_code` and `supervisor_summary`; `PipelineRun` and `SupervisorReport` are removed; run totals are logged only; `ExitCode` (renamed) gains `SUPERVISOR_ERROR = 6` |
 
-#### 8.3 Implementation decisions (P1–P10)
+#### 8.3 Implementation decisions (P1–P12)
 
 These are recorded in `IMPLEMENTATION_PLAN.md` §2 and are applied throughout this file.
 
@@ -1029,8 +1031,10 @@ These are recorded in `IMPLEMENTATION_PLAN.md` §2 and are applied throughout th
 | P8 | **The draft template is Approach 1's current one.** `.agents/templates/draft.md` is a content-identical copy of `../code-orchestration/.agents/templates/draft.md`, including its Cost Basis line and Agent Tool Usage table (`QUESTIONS.md` Q3, 2026-09-29) |
 | P9 | **`src/mcp_client.py` may gain type annotations only.** Iteration 7 adds the 9 missing annotations to the verbatim copy; this is the one permitted divergence from Approach 1's module (`QUESTIONS.md` Q5, 2026-09-29) |
 | P10 | **API-key redaction stays Approach 1's.** `_ApiKeyRedactionFilter` masks the key in the log message only; exception tracebacks and stack text are logged in full, even if they contain the key (`QUESTIONS.md` Q7, 2026-09-29: a proof of concept, where sensitive data may be logged for audit) |
+| P11 | **Per-draft latency counts only the Supervisor's own time.** `DraftMetadata.latency_seconds` is the draft's own `writer` and `qa_legal` durations, plus its Scout share, plus an equal share of `max(supervisor.total_duration_seconds − Σ supervisor.tool_invocations.total_time_seconds, 0)`; `stage_telemetry` stays exactly as `amortise_shared_telemetry` produces it (`QUESTIONS.md` Q8, 2026-10-01) |
+| P12 | **Run totals are logged once, on "Run completed".** `finalise_run(state, *, supervisor_telemetry, rates)` keeps its signature, computes the run's tokens and cost and returns them with `persistence_failed`, and logs no totals line; the composition root measures wall-clock and logs all three on "Run completed" (`QUESTIONS.md` Q9, 2026-10-01) |
 
-New decisions made during implementation are added to `IMPLEMENTATION_PLAN.md` §2 as P11, P12 and so on, and recorded here.
+New decisions made during implementation are added to `IMPLEMENTATION_PLAN.md` §2 as P13 and so on, and recorded here.
 
 #### 8.4 Spike results
 

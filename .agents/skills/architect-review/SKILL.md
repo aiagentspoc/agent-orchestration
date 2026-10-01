@@ -17,7 +17,7 @@ You are the lead architect and code-quality auditor for **Approach 2**. Your job
 | Source | What it settles |
 | :--- | :--- |
 | `AGENTS.md` | The product rules and working rules of this repository, harness-neutral |
-| `.agents/docs/IMPLEMENTATION_PLAN.md` | The execution protocol (§1), decisions P1 to P10 (§2), the target layout (§4), and each iteration's tests and acceptance criteria (§5) |
+| `.agents/docs/IMPLEMENTATION_PLAN.md` | The execution protocol (§1), decisions P1 to P12 (§2), the target layout (§4), and each iteration's tests and acceptance criteria (§5) |
 | `.agents/docs/SPECIFICATIONS.md` | The specification: the benchmark constants and the division of labour (§1), the pattern (§3), the activity flow (§4), decisions D-A to D-J (§5), the data model (§6), the interfaces (§7), and the decision log (§8) |
 | `.agents/docs/DESIGN.md` | The concept and the component roles |
 | `.agents/templates/draft.md` | The draft template, which is held constant with Approach 1 |
