@@ -46,6 +46,7 @@ from .guardrails import (
     check_scout,
     check_writer,
 )
+from .hooks import LoggingHooks
 from .logging_setup import log_context
 from .mcp_client import HSEMockMCPClient, MCPClientError, MCPClientNotConnectedError, MCPConnectionError
 from .rendering import allocate_draft_id
@@ -173,7 +174,9 @@ def build_tools(
         client: The run's connected substrate client; every sub-agent is built with all five of its tools (P1).
         models: The three sub-agent models.
         efforts: The effort each model was built at, recorded on each call's telemetry.
-        hooks: Hook providers registered on every sub-agent a tool builds.
+        hooks: Hook providers registered on every sub-agent a tool builds, after the ``LoggingHooks`` of its role
+            that every sub-agent gets (D-I). The Supervisor's own hooks, ``FatalStopHook`` among them, are never
+            passed here, and neither is a ``LoggingHooks``, which would log every line twice.
 
     Returns:
         ``scout_tool``, ``writer_tool``, ``qa_tool`` and ``save_draft``, in that order.
@@ -205,7 +208,7 @@ def build_tools(
                 stage="scout",
                 model_id=SCOUT_MODEL_ID,
                 reasoning_effort=efforts.scout,
-                build=lambda: build_scout_agent(models.scout, client, hooks=hooks),
+                build=lambda: build_scout_agent(models.scout, client, hooks=(LoggingHooks("scout"), *hooks)),
                 run=lambda agent: run_scout(agent, checked, model_id=SCOUT_MODEL_ID, reasoning_effort=efforts.scout),
             )
             if isinstance(output, _SubAgentFailure):
@@ -239,7 +242,7 @@ def build_tools(
                     stage="writer",
                     model_id=WRITER_MODEL_ID,
                     reasoning_effort=efforts.writer,
-                    build=lambda: build_writer_agent(models.writer, client, hooks=hooks),
+                    build=lambda: build_writer_agent(models.writer, client, hooks=(LoggingHooks("writer"), *hooks)),
                     run=lambda agent: run_writer(
                         agent, writer_input, model_id=WRITER_MODEL_ID, reasoning_effort=efforts.writer
                     ),
@@ -266,7 +269,9 @@ def build_tools(
                     stage="qa_legal",
                     model_id=QA_LEGAL_MODEL_ID,
                     reasoning_effort=efforts.qa_legal,
-                    build=lambda: build_qa_legal_agent(models.qa_legal, client, hooks=hooks),
+                    build=lambda: build_qa_legal_agent(
+                        models.qa_legal, client, hooks=(LoggingHooks("qa_legal"), *hooks)
+                    ),
                     run=lambda agent: run_qa_legal(
                         agent, latest, model_id=QA_LEGAL_MODEL_ID, reasoning_effort=efforts.qa_legal
                     ),
@@ -435,8 +440,9 @@ def _fatal_failure(
     """Record a lost substrate session (D-D): the fatal slot, an ``mcp_session`` failure and an ERROR log.
 
     The slot holds the MCP exception itself, and keeps the first lost session, which is what ended the run. The
-    ``FailureRecord`` is built from the exception as caught, so any Strands wrapper stays in its chain. Stopping the
-    Supervisor is Iteration 12's hook; this call still returns its error to the Supervisor.
+    ``FailureRecord`` is built from the exception as caught, so any Strands wrapper stays in its chain. This call
+    still returns its error to the Supervisor; :class:`~src.hooks.FatalStopHook` then stops the Supervisor once the
+    call completes (D-D.1).
     """
     if state.fatal_error is None:
         state.fatal_error = fatal

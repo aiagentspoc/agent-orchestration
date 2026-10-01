@@ -958,3 +958,16 @@ def test_subagent_lists_agents_md_as_mandatory_reading(path: Path) -> None:
     """Each subagent reads AGENTS.md as part of its mandatory first step."""
     section = _between(_read(path), "## Mandatory first step", "\n## ", path)
     assert "`AGENTS.md`" in section, f"{_rel(path)} does not list AGENTS.md as mandatory reading"
+
+
+def test_specification_records_the_fatal_stop_the_iteration_12_spike_chose() -> None:
+    """D-D.1: D-D names candidate 1 as the stop, and §8.4 records it with its evidence instead of "Pending"."""
+    decision = _spec_section("#### D-D.", "#### D-E.")
+    spike = _read(SPECIFICATIONS_MD).split("#### 8.4 Spike results", 1)[1]
+
+    assert "The result is recorded here as D-D.1." not in decision
+    assert "**D-D.1 (Iteration 12): candidate 1.**" in decision
+    assert "FatalStopHook" in decision and "Agent.cancel()" in decision
+    assert "*Pending.*" not in spike
+    for evidence in ("tests/test_unit/test_sdk_contract.py", "tests/test_unit/test_hooks.py", "SequentialToolExecutor"):
+        assert evidence in spike, evidence

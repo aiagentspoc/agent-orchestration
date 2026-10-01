@@ -400,7 +400,7 @@ A failed Writer call is shown to the Supervisor as `ToolResult.error`, a one-lin
 #### D-D. Fatal errors abort the Supervisor explicitly
 
 **The mechanism.**
-* A wrapper that catches `MCPConnectionError` or `MCPClientNotConnectedError` records it in `RunState.fatal_error` and logs it at ERROR. Transport death surfaces when a fresh sub-agent's tools are resolved, or during its call.
+* A wrapper that catches `MCPConnectionError` or `MCPClientNotConnectedError` records it in `RunState.fatal_error` and logs it at ERROR. Transport death surfaces when a fresh sub-agent's tools are resolved (during a call it surfaces at the next build; §8.4, Known limit).
 * The Supervisor's event loop is then stopped, so no further tool or model call runs.
 * The composition root renders the documents already saved, and maps the error to `MCP_ERROR` (2).
 * A Supervisor that fails on a provider or SDK error exits with `SUPERVISOR_ERROR` (6).
@@ -410,7 +410,7 @@ A failed Writer call is shown to the Supervisor as `ToolResult.error`, a one-lin
 2. `request_state["stop_event_loop"] = True` from a tool with `context=True`;
 3. a `BeforeToolCallEvent` hook cancelling later tools.
 
-The result is recorded here as D-D.1.
+**D-D.1 (Iteration 12): candidate 1.** `FatalStopHook(state)` in `src/hooks.py`, registered on the Supervisor only, handles `AfterToolCallEvent`. Once `RunState.fatal_error` is set, it logs "Fatal abort triggered" once and calls `Agent.cancel()`. With `SequentialToolExecutor`, no later tool runs, whether it was requested in the same model turn or the next. The model is not called again, and the Supervisor returns normally with `stop_reason="cancelled"`; `fatal_error` is left untouched for the composition root to map to `MCP_ERROR`. Candidates 2 and 3 were not needed. Evidence: §8.4.
 
 #### D-E. Revisions: the Supervisor decides, code hands the Writer the latest `AttemptRecord`
 
@@ -1038,4 +1038,24 @@ New decisions made during implementation are added to `IMPLEMENTATION_PLAN.md` �
 
 #### 8.4 Spike results
 
-* **D-D.1 (Iteration 12):** the fatal-stop mechanism chosen, with its evidence. *Pending.*
+* **D-D.1 (Iteration 12): the fatal stop is candidate 1,** an `AfterToolCallEvent` hook calling `Agent.cancel()` (D-D). It is built as `FatalStopHook(state)` in `src/hooks.py`.
+  * **Tests.** `tests/test_unit/test_sdk_contract.py` runs a scripted Supervisor, built with `SequentialToolExecutor`, whose fatal tool sets `RunState.fatal_error` and whose script would then call a second tool and send one more turn. It covers two shapes: the second tool in the next turn, and in the same turn. `tests/test_unit/test_hooks.py` runs the real `writer_tool` over a transport that dies (acceptance criterion 2).
+  * **Evidence.** With candidate 1:
+    * the second tool never runs;
+    * the model is called once;
+    * no exception escapes, and the result has `stop_reason="cancelled"`;
+    * `fatal_error` is still set.
+
+    A same-turn second tool is answered with an error result, "Tool execution cancelled", and is never called. A no-hook control in the same file shows that the script otherwise runs to its end. Candidates 2 and 3 were not built.
+  * **SDK basis (1.55.1).**
+    * `Agent.cancel()` sets the invocation's cancel signal.
+    * `SequentialToolExecutor` checks that signal before each tool.
+    * The event loop checks it again after the tools, and returns before the next model call.
+    * The signal is cleared when the invocation ends, so the test reads the returned result, not the signal.
+  * **Known limit.** A transport that dies *during* a sub-agent's MCP call is returned to that sub-agent as an error tool result, not raised. Strands' MCP client catches it. The run then stops at the next sub-agent build, whose tool listing raises `MCPConnectionError`, as Approach 1's does.
+* **Logging hooks (D-I), Iteration 12.**
+  * **Token source.** `AfterModelCallEvent` fires once per model call. Its stop reason is `stop_response.stop_reason`, and its token usage is `stop_response.message["metadata"]["usage"]`. Inside the hook, `agent.event_loop_metrics` lags one call behind, so `LoggingHooks` reads the event's usage and never the metrics. On a failed call, `stop_response` is `None` and the exception is on the event.
+  * **Where tool events fire.** `BeforeToolCallEvent` and `AfterToolCallEvent` fire for the Supervisor's tools and, through `build_tools(hooks=…)`, for the substrate and structured-output tools inside a sub-agent.
+  * **Correlation.** The Supervisor's own tool events fire outside the wrapper's `log_context`, so its lines take `doc_id` from the call's `doc_id` argument.
+  * **Skipped tools.** A same-turn tool that the fatal stop skips gets no "Tool call started" or "Tool call completed" line: `SequentialToolExecutor` answers it with "Tool execution cancelled" before any tool hook fires.
+  * **Executors.** `SequentialToolExecutor` is imported from `strands.tools.executors`, and runs one turn's tools one after another. The default, `ConcurrentToolExecutor`, runs them together; the sub-agents keep it.

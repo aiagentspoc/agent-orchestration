@@ -69,6 +69,33 @@ def tool_use_turn(
     ]
 
 
+def tool_uses_turn(
+    *calls: tuple[str, dict[str, Any]],
+    input_tokens: int = 10,
+    output_tokens: int = 5,
+    latency_ms: int = 100,
+) -> list[dict[str, Any]]:
+    """Build one model turn that requests every ``(name, args)`` call in ``calls``, in order.
+
+    The same-turn counterpart of :func:`tool_use_turn`: one assistant message carrying one ``toolUse`` block per
+    call, which is what a model asking for several tools at once sends. Each block gets its own ``toolUseId``,
+    ``f"{name}-{position}"``, so the event loop can pair every result with its request even when a name repeats.
+    """
+    events: list[dict[str, Any]] = [{"messageStart": {"role": "assistant"}}]
+    for position, (name, args) in enumerate(calls, start=1):
+        events += [
+            {"contentBlockStart": {"start": {"toolUse": {"name": name, "toolUseId": f"{name}-{position}"}}}},
+            {"contentBlockDelta": {"delta": {"toolUse": {"input": json.dumps(args)}}}},
+            {"contentBlockStop": {}},
+        ]
+    usage = {"inputTokens": input_tokens, "outputTokens": output_tokens, "totalTokens": input_tokens + output_tokens}
+    events += [
+        {"messageStop": {"stopReason": "tool_use"}},
+        {"metadata": {"usage": usage, "metrics": {"latencyMs": latency_ms}}},
+    ]
+    return events
+
+
 def text_turn(
     text: str,
     *,

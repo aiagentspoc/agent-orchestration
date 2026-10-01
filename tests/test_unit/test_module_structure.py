@@ -3,6 +3,7 @@
 Each iteration that adds a ``src`` module appends it to ``EXPECTED_MODULES`` in its Red step.
 """
 
+import ast
 import importlib
 import tempfile
 from pathlib import Path
@@ -25,6 +26,7 @@ EXPECTED_MODULES = [
     "src.agents",
     "src.tools",
     "src.rendering",
+    "src.hooks",
 ]
 
 
@@ -47,3 +49,22 @@ def test_artifact_directory_exists_and_is_writable(directory_name: str) -> None:
     assert directory.is_dir(), f"{directory_name}/ not found at {directory}"
     with tempfile.NamedTemporaryFile(dir=directory) as handle:
         assert Path(handle.name).is_file()
+
+
+def _imported_modules(module_path: Path) -> set[str]:
+    """Every module ``module_path`` imports, relative imports resolved against the ``src`` package."""
+    imported: set[str] = set()
+    for node in ast.walk(ast.parse(module_path.read_text(encoding="utf-8"))):
+        if isinstance(node, ast.Import):
+            imported.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            base = ".".join(part for part in ("src" if node.level else None, node.module) if part)
+            imported.add(base)
+            imported.update(f"{base}.{alias.name}" for alias in node.names)
+    return imported
+
+
+def test_hooks_does_not_import_tools() -> None:
+    """The dependency runs one way, ``src.tools`` -> ``src.hooks``; the Supervisor builder relies on it."""
+    imported = _imported_modules(REPO_ROOT / "src" / "hooks.py")
+    assert not any(name == "src.tools" or name.startswith("src.tools.") for name in imported), sorted(imported)

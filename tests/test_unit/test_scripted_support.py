@@ -6,6 +6,7 @@ scripted harness, where every zero-token test takes its models from.
 """
 
 import inspect
+import json
 
 import pytest
 
@@ -19,7 +20,12 @@ from src.agents import (
     WRITER_REASONING_EFFORT,
 )
 from src.model_factory import ModelBuilder, build_model
-from tests.support.scripted import ScriptedModel, scripted_model_builder, scripted_model_builder_by_effort
+from tests.support.scripted import (
+    ScriptedModel,
+    scripted_model_builder,
+    scripted_model_builder_by_effort,
+    tool_uses_turn,
+)
 
 
 def test_model_builder_is_exported_by_the_model_factory() -> None:
@@ -77,3 +83,17 @@ def test_scripted_model_builder_by_effort_rejects_an_unscripted_key() -> None:
 
     with pytest.raises(AssertionError, match=r"\('gpt-5\.4', 'high'\)"):
         builder(WRITER_MODEL_ID, reasoning_effort="high")
+
+
+def test_tool_uses_turn_requests_every_tool_in_one_turn_under_distinct_ids() -> None:
+    """One assistant message with one toolUse block per call, in order, each with its own ID, then ``tool_use``."""
+    events = tool_uses_turn(("first", {}), ("second", {"doc_id": "d-1"}), input_tokens=11, output_tokens=7)
+
+    starts = [event["contentBlockStart"]["start"]["toolUse"] for event in events if "contentBlockStart" in event]
+    deltas = [event["contentBlockDelta"]["delta"]["toolUse"] for event in events if "contentBlockDelta" in event]
+    assert [start["name"] for start in starts] == ["first", "second"]
+    assert len({start["toolUseId"] for start in starts}) == 2
+    assert [json.loads(delta["input"]) for delta in deltas] == [{}, {"doc_id": "d-1"}]
+    assert events[0] == {"messageStart": {"role": "assistant"}}
+    assert {"messageStop": {"stopReason": "tool_use"}} in events
+    assert events[-1]["metadata"]["usage"] == {"inputTokens": 11, "outputTokens": 7, "totalTokens": 18}
