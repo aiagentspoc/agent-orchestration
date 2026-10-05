@@ -90,3 +90,20 @@ No test reads these lines, so the suite stays green. The implementer declined to
 **Answer (2026-10-01):** B, as recommended. `finalise_run` keeps its planned signature, computes the run's tokens and cost and returns them with `persistence_failed`, and logs no totals line; Iteration 14's "Run completed" logs them once, with the wall-clock the composition root measures. Recorded as P12 in `IMPLEMENTATION_PLAN.md` §2.
 
 *Raised by the architect in the Iteration 11 pre-flight. Status: resolved.*
+
+## Q10 (Iteration 13): May Iteration 13 be completed with the minor test-side items A1–A5 and QA-m4–m6 carried into Iteration 14, since they are still open after the two review rounds the workflow allows?
+**Background:** Iteration 13 is green (1243 tests, ruff clean, AC1–AC3 met). Both round 2 reviewers pass it: the architect APPROVED and QA PASSED. `src/supervisor.py` and the Supervisor prompt were unchanged by the fix round. Round 2 opened only minor items in `tests/test_unit/test_supervisor.py`:
+* A1 / QA-m4: `_ARTICLE_WORK` (l.332) backtracks catastrophically on comma-heavy text, but takes milliseconds on the real prompt. Changing `\S+` to `[^\s,]+` fixes it.
+* A2: missed inflections such as "scoring" and "rewrote".
+* A3: a nearby negation cancels a different verb's match.
+* A4 / QA-m5: the `article_body` text check can never fire (the key check still enforces D-F).
+* A5: a dead alternative.
+* QA-m6 (optional): further missed phrasings.
+
+Both reviewers and FIXES.md give the exact replacements. `/implement` treats any finding still open after round 2 as stop condition 2, and forbids a third round.
+**Recommendation:** A. None of the items touches production code, the prompt or a contract, and the slow regex is not reachable from today's prompt. Iteration 14's brief can apply them test-first at almost no cost, as Q2 did for QA-m4 in Iteration 1.
+**Options:** A. Complete Iteration 13 now; carry A1–A5 and QA-m4–m6 into Iteration 14's brief and apply them there · B. Allow one extra fix round for these items only, then complete Iteration 13 · C. Complete Iteration 13 and record the items as accepted test-side limits, applying only A1 (the slow regex) later
+
+**Answer (2026-10-05):** A, as recommended. Iteration 13 is completed now; A1–A5 and QA-m4–m6 are carried into Iteration 14's brief and applied there, test-first.
+
+*Raised by the orchestrator at the end of the Iteration 13 review (round 2). Status: resolved.*

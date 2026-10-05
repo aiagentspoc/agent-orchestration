@@ -24,6 +24,7 @@ from pathlib import Path, PurePosixPath
 import pytest
 
 from src.schemas import MAX_ATTEMPTS_PER_DOC
+from src.supervisor import build_supervisor_prompt
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DOCS_DIR = REPO_ROOT / ".agents" / "docs"
@@ -971,3 +972,66 @@ def test_specification_records_the_fatal_stop_the_iteration_12_spike_chose() -> 
     assert "*Pending.*" not in spike
     for evidence in ("tests/test_unit/test_sdk_contract.py", "tests/test_unit/test_hooks.py", "SequentialToolExecutor"):
         assert evidence in spike, evidence
+
+
+@pytest.mark.parametrize("max_drafts", [None, 2], ids=["no-ceiling", "ceiling-2"])
+def test_supervisor_prompt_copies_the_d_c_decision_table_row_for_row(max_drafts: int | None) -> None:
+    """Iteration 13, AC1: the prompt holds one Markdown table, D-C's decision table, every line byte for byte."""
+    spec_section = _spec_section("**Decision table:**", "A failed Writer call is shown")
+    spec_rows = _table_rows(spec_section)
+    assert spec_rows == [list(row) for row in DECISION_TABLE_ROWS]
+    prompt = build_supervisor_prompt(max_drafts)
+    assert _table_rows(prompt) == spec_rows
+    spec_lines = [line for line in spec_section.splitlines() if line.startswith("|")]
+    assert [line for line in prompt.splitlines() if line.startswith("|")] == spec_lines
+
+
+#: The heading both D-C and the prompt put above the run-level priorities.
+_PRIORITIES_HEADING: str = "**Run-level priorities,** applied on top of the table:"
+
+
+def _d_c_priorities() -> list[str]:
+    """D-C's run-level priorities, as its numbered list words them."""
+    section = _spec_section(_PRIORITIES_HEADING, "##### Run-level guardrails")
+    return re.findall(r"^\d+\. (.+)$", section, re.MULTILINE)
+
+
+def _priorities_disagree(prompt: str, priorities: list[str]) -> bool:
+    """Whether ``prompt`` states other run-level priorities than ``priorities``: one missing, reworded or added.
+
+    The prompt's priorities are the numbered list right under the heading, up to the first blank line.
+    """
+    if _PRIORITIES_HEADING + "\n" not in prompt:
+        return True
+    block = prompt.split(_PRIORITIES_HEADING + "\n", 1)[1].split("\n\n", 1)[0]
+    return re.findall(r"^\d+\. (.+)$", block, re.MULTILINE) != priorities
+
+
+@pytest.mark.parametrize("max_drafts", [None, 2], ids=["no-ceiling", "ceiling-2"])
+def test_supervisor_prompt_states_the_d_c_run_level_priorities_verbatim(max_drafts: int | None) -> None:
+    """Iteration 13, AC3: the prompt's priorities are D-C's two, as D-C words them, and no others."""
+    priorities = _d_c_priorities()
+    assert len(priorities) == 2
+    assert not _priorities_disagree(build_supervisor_prompt(max_drafts), priorities)
+
+
+def test_priorities_check_catches_an_invented_extra_priority() -> None:
+    """A third priority under the heading breaks "D-C and the prompt agree on the priorities" (QA-m2, M7)."""
+    priorities = _d_c_priorities()
+    prompt = build_supervisor_prompt(None)
+    last = f"{len(priorities)}. {priorities[-1]}\n"
+    assert last in prompt
+    extra = "3. **Start every candidate first.** Draft every candidate before auditing any.\n"
+    invented = prompt.replace(last, last + extra)
+    assert _priorities_disagree(invented, priorities)
+
+
+@pytest.mark.parametrize("max_drafts", [None, 2], ids=["no-ceiling", "ceiling-2"])
+def test_supervisor_prompt_states_the_attempt_cap_d_c_states(max_drafts: int | None) -> None:
+    """Iteration 13, AC3: the prompt states the cap, canonically, as the one D-C rule 4 and ``src.schemas`` hold."""
+    rule_4 = _spec_section("4. **The limit is", "5. **")
+    assert _stated_attempt_caps("The limit is" + rule_4) == [MAX_ATTEMPTS_PER_DOC]
+    prompt = build_supervisor_prompt(max_drafts)
+    caps = _stated_attempt_caps(prompt)
+    assert caps and all(cap == MAX_ATTEMPTS_PER_DOC for cap in caps), caps
+    assert _states_the_cap_canonically(prompt)

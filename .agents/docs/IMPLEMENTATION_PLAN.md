@@ -140,7 +140,7 @@ These settle points that the design (Draft v7) left open. `SPECIFICATIONS.md` ap
 | 10 | `save_draft` and draft ID allocation | 3 | `src/tools.py`, `src/rendering.py` | ✅ Complete (2026-09-30, 1038 tests) |
 | 11 | End-of-run reconciliation and rendering | 3 | `src/rendering.py`, `src/telemetry.py` | ✅ Complete (2026-10-01, 1068 tests) |
 | 12 | SDK spike: fatal stop and logging hooks | 4 | `src/hooks.py`, SDK contract tests | ✅ Complete (2026-10-01, 1111 tests) |
-| 13 | Supervisor agent | 4 | `src/supervisor.py` | ⏳ Pending |
+| 13 | Supervisor agent | 4 | `src/supervisor.py` | ✅ Complete (2026-10-05, 1244 tests) |
 | 14 | Composition root and CLI | 4 | `src/app.py`, `src/cli.py` | ⏳ Pending |
 | 15 | Scripted end-to-end scenarios | 5 | `tests/test_integration/test_supervisor_e2e.py` | ⏳ Pending |
 | 16 | Live end-to-end tests and benchmark report (built, not run) | 6 | `tests/test_live/`, `src/benchmark.py`, `README.md` | ⏳ Pending |

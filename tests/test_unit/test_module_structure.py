@@ -27,6 +27,7 @@ EXPECTED_MODULES = [
     "src.tools",
     "src.rendering",
     "src.hooks",
+    "src.supervisor",
 ]
 
 
@@ -68,3 +69,10 @@ def test_hooks_does_not_import_tools() -> None:
     """The dependency runs one way, ``src.tools`` -> ``src.hooks``; the Supervisor builder relies on it."""
     imported = _imported_modules(REPO_ROOT / "src" / "hooks.py")
     assert not any(name == "src.tools" or name.startswith("src.tools.") for name in imported), sorted(imported)
+
+
+def test_supervisor_imports_no_substrate_client_and_no_concrete_model() -> None:
+    """The Supervisor has no substrate access (Q10 = B), and its model is injected: it builds no provider model."""
+    imported = _imported_modules(REPO_ROOT / "src" / "supervisor.py")
+    forbidden = ("src.mcp_client", "src.model_factory", "strands.models.openai", "strands.tools.mcp")
+    assert [name for name in imported if name.startswith(forbidden)] == [], sorted(imported)
