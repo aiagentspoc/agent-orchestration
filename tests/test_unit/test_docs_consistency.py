@@ -196,6 +196,8 @@ IMPLEMENTATION_DECISIONS: dict[str, str] = {
     "P11": "Per-draft latency counts only the Supervisor's own time",
     "P12": 'Run totals are logged once, on "Run completed"',
     "P13": "`PARSER_ERROR` needs a Supervisor that ended on its own",
+    "P14": "Live Prompt B checks the recency rule, not an empty window",
+    "P15": "Content Factory's run wall-clock comes from its log timestamps",
 }
 #: SPECIFICATIONS.md D-I event catalogue: (level, event), in order.
 LOG_EVENTS: tuple[tuple[str, str], ...] = (
@@ -722,7 +724,7 @@ def test_specification_records_decisions_d_a_to_d_j() -> None:
 
 
 def test_specification_records_every_implementation_decision_in_order() -> None:
-    """§8.3 has one row per implementation decision in ``IMPLEMENTATION_DECISIONS``, P1 to P13, in order."""
+    """§8.3 has one row per implementation decision in ``IMPLEMENTATION_DECISIONS``, P1 to P15, in order."""
     section = _spec_section("#### 8.3 Implementation decisions", "#### 8.4")
     assert re.findall(r"^\| (P\d+) \|", section, re.MULTILINE) == list(IMPLEMENTATION_DECISIONS)
 
@@ -749,7 +751,7 @@ def test_decisions_without_their_statement_reports_a_drifted_statement_under_eit
 def test_implementation_decisions_open_with_the_same_statement_in_both_records(
     source: Path, start: str, end: str
 ) -> None:
-    """Each of P1 to P13 opens its row with the statement pinned in ``IMPLEMENTATION_DECISIONS``, in both records."""
+    """Each of P1 to P15 opens its row with the statement pinned in ``IMPLEMENTATION_DECISIONS``, in both records."""
     missing = _decisions_without_their_statement(_between(_read(source), start, end, source))
     assert missing == [], f"{_rel(source)} does not open these decisions with their pinned statement: {missing}"
 

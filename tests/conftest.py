@@ -1,9 +1,11 @@
 """Repo-wide pytest fixtures for the HSE Easy suite.
 
-The environment-isolation fixture is the enforcement half of **D16**: no test in
-either ``tests/test_unit/`` or ``tests/test_integration/`` may observe a real
-credential or a real cost rate, so reaching a live model endpoint from inside
-``pytest`` is impossible rather than merely discouraged. Every LLM in every test
+The environment-isolation fixture is the enforcement half of **D16**: no test
+that is not marked ``live`` may observe a real credential or a real cost rate, so
+reaching a live model endpoint from the default run is impossible rather than
+merely discouraged. The ``live`` tests in ``tests/test_live/``, deselected by
+default and run only by the user (P4), are the one exception: they opt out
+through their marker, here and nowhere else. Every LLM in every test
 is a ``ScriptedModel`` or a ``FailingModel`` injected through the
 ``model_builder`` seam; the live substrate session, which is a local ``uv``
 subprocess over a static corpus, is deliberately *not* isolated.
@@ -20,6 +22,9 @@ import pytest
 
 from src.costs import CostSettings
 from src.credentials import CredentialManager, ReasoningSettings
+
+#: ``pytester`` ships with pytest; ``tests/test_unit/test_isolation.py`` runs the isolation fixture in an inner session.
+pytest_plugins = ["pytester"]
 
 #: Every variable ``CredentialManager``, ``CostSettings`` and ``ReasoningSettings``
 #: read. Stripped for the duration of each test so a developer's populated ``.env``
@@ -49,8 +54,8 @@ _ROUTED_LOGGER_NAMES: Final[tuple[str, ...]] = ("strands", "openai", "httpx", "m
 
 
 @pytest.fixture(autouse=True)
-def _isolate_environment(monkeypatch: pytest.MonkeyPatch) -> None:
-    """D16: no test may see real credentials, real cost rates or a real ``.env``.
+def _isolate_environment(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    """D16: no test may see real credentials, real cost rates or a real ``.env``, unless it is marked ``live``.
 
     Stripping the OS variables is not enough on its own. The composition root,
     ``src.app.run``, default-constructs ``ReasoningSettings`` and ``CostSettings``
@@ -60,8 +65,12 @@ def _isolate_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     ``build_model`` would call a live endpoint. Pinning ``env_file`` to ``None`` on
     all three classes closes that, and monkeypatch restores each dict entry
     afterwards. A test that passes ``_env_file=`` explicitly still reads its file.
-    Kept as one autouse fixture so the live tests can opt out in one place.
+    Kept as one autouse fixture so the live tests opt out in one place: a test
+    carrying the ``live`` marker, and only that marker, is left with the real
+    environment it needs to reach the real endpoints.
     """
+    if request.node.get_closest_marker("live") is not None:
+        return
     for name in _ISOLATED_ENV_VARS:
         monkeypatch.delenv(name, raising=False)
     for settings_class in (CredentialManager, CostSettings, ReasoningSettings):

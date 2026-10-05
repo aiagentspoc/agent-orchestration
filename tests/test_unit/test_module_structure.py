@@ -30,6 +30,7 @@ EXPECTED_MODULES = [
     "src.supervisor",
     "src.app",
     "src.cli",
+    "src.benchmark",
 ]
 
 

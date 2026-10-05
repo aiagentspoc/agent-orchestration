@@ -1,7 +1,7 @@
 # HSE Easy — Approach 2 Specifications
 ## Research Analyst (Supervisor Agent-Orchestrated System)
 
-**Status:** Approved, 2026-09-28. This file consolidates the design plan (Draft v7) with decisions P1 to P13 from `IMPLEMENTATION_PLAN.md` §2.
+**Status:** Approved, 2026-09-28. This file consolidates the design plan (Draft v7) with decisions P1 to P15 from `IMPLEMENTATION_PLAN.md` §2.
 **SDK checked against:** `strands-agents 1.55.1`, the version locked in Approach 1's `uv.lock`.
 **Approach 1 (reference project):** `../code-orchestration/`, the folder next to `agent-orchestration/`. On this machine that is `C:\Users\Saksham\Git\poc\AIAgents\code-orchestration`. It is **read-only**. Its `src/`, `tests/`, `uv.lock`, `drafts/` and `.agents/docs/` are the baseline this project reuses and is benchmarked against.
 
@@ -26,7 +26,7 @@ Where they disagree, this file wins, and the disagreement is a stop condition (`
 | 5 | Architecture decisions D-A to D-J |
 | 6 | Data model |
 | 7 | Interfaces: tools, views, check order, CLI, logs, exit codes |
-| 8 | Decision log: Q1–Q12, DM1–DM18, P1–P13 |
+| 8 | Decision log: Q1–Q12, DM1–DM18, P1–P15 |
 
 ---
 
@@ -271,7 +271,7 @@ Every `ToolResult` also carries a `RunContext` snapshot (today, the attempt cap,
 * Because the Supervisor may interleave work on several documents, **per-run wall-clock** is the primary latency figure; per-draft latency is best-effort.
 * Run totals (tokens, cost, wall-clock) are logged once at run end, as in Approach 1, and are not stored. `finalise_run` computes the run's tokens and cost and returns them; the composition root logs them once, on "Run completed", with the wall-clock it measures (P12).
 * Per-draft latency counts the Supervisor's own time only, its duration less the time spent in its tools, so no sub-agent call is counted twice (P11).
-* The benchmark reports exactly Approach 1's metrics (Q8 = D).
+* The benchmark reports exactly Approach 1's metrics (Q8 = D); Content Factory's run wall-clock is read from its log timestamps (P15).
 
 #### D-C. Hard guardrails in code
 
@@ -1015,7 +1015,7 @@ Exactly one MCP session is opened per run, and the exit-code mapping sits outsid
 | DM17 | Configuration | The attempt cap is fixed at 3; `ReasoningSettings` gains `supervisor`; `RunState` holds the configuration |
 | DM18 | Run result | `RunState` is the run's result, with `exit_code` and `supervisor_summary`; `PipelineRun` and `SupervisorReport` are removed; run totals are logged only; `ExitCode` (renamed) gains `SUPERVISOR_ERROR = 6` |
 
-#### 8.3 Implementation decisions (P1–P13)
+#### 8.3 Implementation decisions (P1–P15)
 
 These are recorded in `IMPLEMENTATION_PLAN.md` §2 and are applied throughout this file.
 
@@ -1034,8 +1034,10 @@ These are recorded in `IMPLEMENTATION_PLAN.md` §2 and are applied throughout th
 | P11 | **Per-draft latency counts only the Supervisor's own time.** `DraftMetadata.latency_seconds` is the draft's own `writer` and `qa_legal` durations, plus its Scout share, plus an equal share of `max(supervisor.total_duration_seconds − Σ supervisor.tool_invocations.total_time_seconds, 0)`; `stage_telemetry` stays exactly as `amortise_shared_telemetry` produces it (`QUESTIONS.md` Q8, 2026-10-01) |
 | P12 | **Run totals are logged once, on "Run completed".** `finalise_run(state, *, supervisor_telemetry, rates)` keeps its signature, computes the run's tokens and cost and returns them with `persistence_failed`, and logs no totals line; the composition root measures wall-clock and logs all three on "Run completed" (`QUESTIONS.md` Q9, 2026-10-01) |
 | P13 | **`PARSER_ERROR` needs a Supervisor that ended on its own.** It applies only when the Supervisor ended its own invocation, no fatal stop occurred and no `scout_tool` call succeeded; a session lost at the Scout is `MCP_ERROR` (2), and a Scout failure never retried successfully is `PARSER_ERROR` (3) (`QUESTIONS.md` Q11, 2026-10-05) |
+| P14 | **Live Prompt B checks the recency rule, not an empty window.** The live test asserts the scope the Supervisor built: `date_to` is the run date, `date_from` the run date minus 3 months, within 3 days, and `sources == ["INAIL"]`. It accepts exit 0 or 1: with 1 no draft is written, and with 0 Prompt A's draft checks apply. The corpus on disk (P7) holds INAIL updates inside the current window, so an expected exit 1 would depend on the run date (`QUESTIONS.md` Q14, 2026-10-05) |
+| P15 | **Content Factory's run wall-clock comes from its log timestamps.** It is the "Pipeline run finished" timestamp minus the preceding "Pipeline run starting" one, or "not recorded" without both; Research Analyst uses its logged `wall_clock` (P12). The benchmark reads the logs from `<drafts>/../logs` by default, with optional `--a1-logs` and `--a2-logs`, and a footnote states that Approach 1's span starts after its MCP session opened. Approach 1 logs no "Run completed" line and no wall-clock field (`QUESTIONS.md` Q15, 2026-10-05) |
 
-New decisions made during implementation are added to `IMPLEMENTATION_PLAN.md` §2 as P14 and so on, and recorded here.
+New decisions made during implementation are added to `IMPLEMENTATION_PLAN.md` §2 as P16 and so on, and recorded here.
 
 #### 8.4 Spike results
 

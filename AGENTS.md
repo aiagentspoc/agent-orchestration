@@ -12,7 +12,7 @@ This file is harness-neutral. It states the rules every AI coding assistant foll
 | Document | What it settles |
 | :--- | :--- |
 | [SPECIFICATIONS.md](.agents/docs/SPECIFICATIONS.md) | **The specification, and the single source of truth.** Benchmark constants and division of labour (§1), the multi-agent pattern (§3), the activity flow (§4), decisions D-A to D-J (§5), the data model (§6), the interfaces (§7) and the decision log (§8) |
-| [IMPLEMENTATION_PLAN.md](.agents/docs/IMPLEMENTATION_PLAN.md) | The build sequence: the execution protocol and Definition of Done (§1), decisions P1 to P13 (§2), the iteration tracker (§3), the target layout and the allowed dependencies (§4), and each iteration's tests and acceptance criteria (§5) |
+| [IMPLEMENTATION_PLAN.md](.agents/docs/IMPLEMENTATION_PLAN.md) | The build sequence: the execution protocol and Definition of Done (§1), decisions P1 to P15 (§2), the iteration tracker (§3), the target layout and the allowed dependencies (§4), and each iteration's tests and acceptance criteria (§5) |
 | [DESIGN.md](.agents/docs/DESIGN.md) | The concept and the component roles |
 | [draft.md](.agents/templates/draft.md) | The draft template, held constant with Approach 1 |
 

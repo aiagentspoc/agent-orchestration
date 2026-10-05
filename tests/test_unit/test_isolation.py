@@ -55,3 +55,40 @@ def test_reasoning_settings_ignore_a_dotenv_in_the_working_directory() -> None:
 def test_an_explicit_env_file_is_still_read(populated_env_in_cwd: Path) -> None:
     """The pin is a class default: a test that passes ``_env_file=`` explicitly still reads that file."""
     assert CredentialManager(_env_file=populated_env_in_cwd).strong_endpoint == "https://strong.example.invalid/openai/v1"
+
+
+#: The inner session's tests: one marked ``live``, one not. Each reads the variable and the ``env_file`` setting the
+#: outer test arranged, so the pair shows which of them the isolation fixture touched.
+_INNER_TESTS = """
+import os
+
+import pytest
+
+from src.credentials import CredentialManager
+
+
+@pytest.mark.live
+def test_live_sees_the_real_environment():
+    assert os.environ.get("HSE_MODEL_STRONG_API_KEY") == "sk-survives"
+    assert CredentialManager.model_config["env_file"] == ".env"
+
+
+def test_any_other_test_is_isolated():
+    assert "HSE_MODEL_STRONG_API_KEY" not in os.environ
+    assert CredentialManager.model_config["env_file"] is None
+"""
+
+
+def test_only_a_live_test_opts_out_of_the_isolation(pytester: pytest.Pytester, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The ``live`` marker, and nothing else, switches the autouse isolation off, in one place (P4).
+
+    An inner session runs the real fixture over two tests. The inner session has none of the repository's
+    ``addopts``, so its ``live`` test runs there; it only reads the environment, and calls no model.
+    """
+    monkeypatch.setenv("HSE_MODEL_STRONG_API_KEY", "sk-survives")
+    monkeypatch.setitem(CredentialManager.model_config, "env_file", ".env")
+    pytester.makeini("[pytest]\nmarkers =\n    live: calls real model endpoints\n")
+    pytester.makeconftest("from tests.conftest import _isolate_environment  # noqa: F401\n")
+    pytester.makepyfile(test_inner=_INNER_TESTS)
+    result = pytester.runpytest("-p", "no:cacheprovider", "-p", "no:asyncio")
+    result.assert_outcomes(passed=2)

@@ -121,6 +121,8 @@ These settle points that the design (Draft v7) left open. `SPECIFICATIONS.md` ap
 | **P11** | **Per-draft latency counts only the Supervisor's own time.** `DraftMetadata.latency_seconds` = the draft's own `writer`/`qa_legal` durations + its Scout share + an equal share of `max(supervisor.total_duration_seconds − Σ supervisor.tool_invocations.total_time_seconds, 0)`. The `stage_telemetry` entries stay exactly as `amortise_shared_telemetry` produces them (Q8, 2026-10-01). | Iteration 11. The Supervisor's duration already contains every sub-agent call, so the literal §6.8 sum would count it twice; per-draft times then mean what Approach 1's mean |
 | **P12** | **Run totals are logged once, on "Run completed".** `finalise_run(state, *, supervisor_telemetry, rates)` keeps its signature, computes the run's tokens and cost and returns them with `persistence_failed`, and logs no totals line. The composition root measures wall-clock and logs all three on "Run completed" (Q9, 2026-10-01). | Iterations 11 and 14. D-I wins over the plan's Iteration 11 wording; DM18 holds, since nothing is stored on `RunState` |
 | **P13** | **`PARSER_ERROR` needs a Supervisor that ended on its own.** It applies only when the Supervisor ended its own invocation, no fatal stop occurred and no `scout_tool` call succeeded; a session lost at the Scout is `MCP_ERROR` (2), and a Scout failure never retried successfully is `PARSER_ERROR` (3) (Q11, 2026-10-05). | Iteration 14. Reconciles §7.6 with D-D and §6.10; no exit code is added, and P6's numeric maximum still combines the rest |
+| **P14** | **Live Prompt B checks the recency rule, not an empty window.** The test asserts the scope the Supervisor built (`date_to` is the run date, `date_from` the run date minus 3 months ±3 days, `sources == ["INAIL"]`) and an exit code of 0 or 1: with 1 no draft, with 0 Prompt A's draft checks (Q14, 2026-10-05). | Iteration 16. The corpus on disk (P7) holds INAIL updates inside today's window, so the plan's expected exit 1 would depend on the run date |
+| **P15** | **Content Factory's run wall-clock comes from its log timestamps.** It is "Pipeline run finished" minus the preceding "Pipeline run starting", or "not recorded" without both; Research Analyst uses its logged `wall_clock` (P12). Logs are read from `<drafts>/../logs` by default, with optional `--a1-logs` and `--a2-logs`, and a footnote states that Approach 1's span starts after its MCP session opened (Q15, 2026-10-05). | Iteration 16. Approach 1 logs no "Run completed" line and no wall-clock field |
 
 ---
 
@@ -144,7 +146,7 @@ These settle points that the design (Draft v7) left open. `SPECIFICATIONS.md` ap
 | 13 | Supervisor agent | 4 | `src/supervisor.py` | ✅ Complete (2026-10-05, 1244 tests) |
 | 14 | Composition root and CLI | 4 | `src/app.py`, `src/cli.py` | ✅ Complete (2026-10-05, 1414 tests) |
 | 15 | Scripted end-to-end scenarios | 5 | `tests/test_integration/test_supervisor_e2e.py` | ✅ Complete (2026-10-05, 1437 tests) |
-| 16 | Live end-to-end tests and benchmark report (built, not run) | 6 | `tests/test_live/`, `src/benchmark.py`, `README.md` | ⏳ Pending |
+| 16 | Live end-to-end tests and benchmark report (built, not run) | 6 | `tests/test_live/`, `src/benchmark.py`, `README.md` | ✅ Complete (2026-10-05, 1517 tests; live run pending the user) |
 
 ```text
 0 ─► 1 ─► 2 ─► 3 ─► 4 ─► 5 ─► 6 ─► 7 ─► 8 ─► 9 ─► 10 ─► 11 ─► 12 ─► 13 ─► 14 ─► 15 ─► 16

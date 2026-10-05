@@ -11,7 +11,7 @@ Supporting sources of truth, all harness-neutral, in [`.agents/docs/`](.agents/d
 | Document | What it settles |
 | :--- | :--- |
 | [SPECIFICATIONS.md](.agents/docs/SPECIFICATIONS.md) | The specification and single source of truth: decisions D-A to D-J, the data model, the interfaces, the decision log |
-| [IMPLEMENTATION_PLAN.md](.agents/docs/IMPLEMENTATION_PLAN.md) | The build sequence: execution protocol, stop conditions, P1–P13, the iteration tracker and each iteration's tests |
+| [IMPLEMENTATION_PLAN.md](.agents/docs/IMPLEMENTATION_PLAN.md) | The build sequence: execution protocol, stop conditions, P1–P15, the iteration tracker and each iteration's tests |
 | [DESIGN.md](.agents/docs/DESIGN.md) | The concept and the component roles |
 
 ## Project principle — "An agent owns the flow"
