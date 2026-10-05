@@ -14,7 +14,7 @@ Before writing anything, read:
 
 1. **Your plan.** Read the iteration's section in `.agents/docs/IMPLEMENTATION_PLAN.md`, together with:
    * §1: the execution protocol, the Definition of Done and the stop conditions;
-   * §2: decisions P1 to P12;
+   * §2: decisions P1 to P13;
    * §4: the target layout and the allowed dependencies.
 
    The iteration's *Red* list is what you execute, one behaviour at a time.

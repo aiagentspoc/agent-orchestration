@@ -75,11 +75,14 @@ __all__ = [
     "QA_TOOL_DESCRIPTION",
     "SAVE_DRAFT_TOOL_DESCRIPTION",
     "SCOUT_TOOL_DESCRIPTION",
+    "SESSION_ERRORS",
     "WRITER_TOOL_DESCRIPTION",
     "SubAgentEfforts",
     "SubAgentModels",
     "WriterSourceFetchError",
     "build_tools",
+    "failed_call_telemetry",
+    "failure_record",
 ]
 
 _LOGGER = logging.getLogger("src.tools")
@@ -88,8 +91,9 @@ _LOGGER = logging.getLogger("src.tools")
 #: command ``HSEMockMCPClient`` runs, as Approach 1's orchestrator quoted it.
 MCP_LAUNCH_COMMAND: Final[str] = "uv run --quiet --directory <server_dir> fastmcp run server.py"
 
-#: The exceptions meaning the substrate session itself is lost (D-D). Anywhere in a failure's chain, they are fatal.
-_FATAL_ERRORS: Final[tuple[type[MCPClientError], ...]] = (MCPConnectionError, MCPClientNotConnectedError)
+#: The exceptions meaning the substrate session itself is lost (D-D). Anywhere in a failure's chain, they are fatal;
+#: the composition root catches the same two when the session cannot be opened or dies as it closes.
+SESSION_ERRORS: Final[tuple[type[MCPClientError], ...]] = (MCPConnectionError, MCPClientNotConnectedError)
 
 #: The substrate tool the Writer must call to dereference its candidate (D-C rule 2, Approach 1 D23). Named here
 #: because ``writer_tool`` checks the call's telemetry for it.
@@ -381,7 +385,7 @@ def _invoke_sub_agent(
         agent = build()
         output = run(agent)
     except Exception as exc:
-        telemetry = _failed_call_telemetry(agent, model_id, reasoning_effort)
+        telemetry = failed_call_telemetry(agent, model_id, reasoning_effort)
         state.ledger.append(StageTelemetry(stage=stage, doc_id=doc_id, attempt=attempt, telemetry=telemetry))
         fatal = _fatal_cause(exc)
         if fatal is not None:
@@ -400,7 +404,7 @@ def _invoke_sub_agent(
     return output
 
 
-def _failed_call_telemetry(agent: Agent | None, model_id: str, reasoning_effort: str | None) -> AgentTelemetry:
+def failed_call_telemetry(agent: Agent | None, model_id: str, reasoning_effort: str | None) -> AgentTelemetry:
     """The telemetry of a call that raised: what its agent spent, or zero usage if no agent was built (§6.6).
 
     A failed call returns no ``AgentResult``, but its agent's ``event_loop_metrics`` survive the exception: Strands
@@ -424,7 +428,7 @@ def _fatal_cause(exc: BaseException) -> MCPClientError | None:
     The chain is walked because Strands wraps a model-side failure after the first tool cycle in an
     ``EventLoopException``, with the original as its ``__cause__``.
     """
-    return next((link for link in _exception_chain(exc) if isinstance(link, _FATAL_ERRORS)), None)
+    return next((link for link in _exception_chain(exc) if isinstance(link, SESSION_ERRORS)), None)
 
 
 def _fatal_failure(
@@ -446,7 +450,7 @@ def _fatal_failure(
     """
     if state.fatal_error is None:
         state.fatal_error = fatal
-    failure = _failure_record("mcp_session", exc, doc_id=doc_id, attempt=attempt)
+    failure = failure_record("mcp_session", exc, doc_id=doc_id, attempt=attempt)
     state.failures.append(failure)
     _LOGGER.error(
         "MCP session failed to open, or died mid-run: tool=%s server_dir=%s launch=%s",
@@ -472,7 +476,7 @@ def _recoverable_failure(
     An ordinary sub-agent failure, or a Writer draft that fails D-C rule 2. The run goes on: the Supervisor decides
     what to do with the failed call.
     """
-    failure = _failure_record(stage, exc, doc_id=doc_id, attempt=attempt)
+    failure = failure_record(stage, exc, doc_id=doc_id, attempt=attempt)
     state.failures.append(failure)
     _LOGGER.warning(
         "Recoverable tool failure returned to the Supervisor: tool=%s doc_id=%s attempt=%s",
@@ -484,7 +488,7 @@ def _recoverable_failure(
     return _SubAgentFailure(error=_one_line_error(tool_name, exc, failure.remote))
 
 
-def _failure_record(
+def failure_record(
     stage: FailureStage, exc: BaseException, *, doc_id: str | None, attempt: int | None
 ) -> FailureRecord:
     """Capture one failure in full (Approach 1's ``_failure_record``, with ``attempt``): nothing is truncated (D22)."""

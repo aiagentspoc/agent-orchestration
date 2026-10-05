@@ -18,7 +18,8 @@ from typing import Final
 
 import pytest
 
-from src.credentials import ReasoningSettings
+from src.costs import CostSettings
+from src.credentials import CredentialManager, ReasoningSettings
 
 #: Every variable ``CredentialManager``, ``CostSettings`` and ``ReasoningSettings``
 #: read. Stripped for the duration of each test so a developer's populated ``.env``
@@ -51,17 +52,20 @@ _ROUTED_LOGGER_NAMES: Final[tuple[str, ...]] = ("strands", "openai", "httpx", "m
 def _isolate_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     """D16: no test may see real credentials, real cost rates or a real ``.env``.
 
-    Stripping the OS variables is enough for ``CredentialManager`` and
-    ``CostSettings``, which no test constructs without ``_env_file=None``.
-    ``ReasoningSettings`` is different: ``execute_pipeline`` default-constructs one
-    on every run, so a repository ``.env`` carrying an effort override would reach
-    production code under test through a path no test can pass ``_env_file=None``
-    to. Pinning ``env_file`` to ``None`` on the class closes that, and monkeypatch
-    restores the dict entry afterwards.
+    Stripping the OS variables is not enough on its own. The composition root,
+    ``src.app.run``, default-constructs ``ReasoningSettings`` and ``CostSettings``
+    on every run, and ``build_model`` a ``CredentialManager``, so a repository
+    ``.env`` would reach production code under test through paths no test can pass
+    ``_env_file=None`` to; with credentials in it, a run on the default
+    ``build_model`` would call a live endpoint. Pinning ``env_file`` to ``None`` on
+    all three classes closes that, and monkeypatch restores each dict entry
+    afterwards. A test that passes ``_env_file=`` explicitly still reads its file.
+    Kept as one autouse fixture so the live tests can opt out in one place.
     """
     for name in _ISOLATED_ENV_VARS:
         monkeypatch.delenv(name, raising=False)
-    monkeypatch.setitem(ReasoningSettings.model_config, "env_file", None)
+    for settings_class in (CredentialManager, CostSettings, ReasoningSettings):
+        monkeypatch.setitem(settings_class.model_config, "env_file", None)
 
 
 @pytest.fixture

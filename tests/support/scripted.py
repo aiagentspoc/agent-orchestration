@@ -403,7 +403,13 @@ class OfflineSubstrateSession:
         raise_on_call_index: int | None = None,
         fail_listing_with: BaseException | None = None,
         fail_listing_on: Iterable[int] | None = None,
+        fail_enter_with: BaseException | None = None,
+        fail_exit_with: BaseException | None = None,
     ) -> None:
+        self.fail_enter_with: BaseException | None = fail_enter_with
+        self.fail_exit_with: BaseException | None = fail_exit_with
+        #: Each ``"enter"`` and ``"exit"`` of the session, in order; a test may append its own markers alongside.
+        self.events: list[str] = []
         self.raise_on: set[str] = set(raise_on or ())
         self.raise_with: Exception | None = raise_with
         self.raise_on_call_index: int | None = raise_on_call_index
@@ -412,6 +418,23 @@ class OfflineSubstrateSession:
         self.tool_filters_seen: list[dict[str, Any] | None] = []
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self.error_result: dict[str, Any] | None = None
+
+    def __enter__(self) -> "OfflineSubstrateSession":
+        """Open the session as ``HSEMockMCPClient.start()`` does, spawning nothing; or fail as a spawn can.
+
+        ``fail_enter_with`` is raised from here, so ``start()`` classifies it exactly as it classifies a real spawn
+        or handshake failure.
+        """
+        self.events.append("enter")
+        if self.fail_enter_with is not None:
+            raise self.fail_enter_with
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        """Close the session as ``HSEMockMCPClient.stop()`` does; ``fail_exit_with`` makes it die as it closes."""
+        self.events.append("exit")
+        if self.fail_exit_with is not None:
+            raise self.fail_exit_with
 
     def list_tools_sync(self, tool_filters: dict[str, Any] | None = None, **kwargs: Any) -> list[AgentTool]:
         """Return the stub substrate tools, honouring an ``allowed`` filter.

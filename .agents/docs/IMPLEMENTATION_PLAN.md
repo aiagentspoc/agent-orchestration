@@ -120,6 +120,7 @@ These settle points that the design (Draft v7) left open. `SPECIFICATIONS.md` ap
 | **P10** | **API-key redaction stays Approach 1's.** `_ApiKeyRedactionFilter` masks the key in the log message only; exception tracebacks and stack text are logged in full, even if they contain the key (Q7, 2026-09-29: a proof of concept, where sensitive data may be logged for audit). | Iteration 3. The filter is moved verbatim, and no later iteration widens it |
 | **P11** | **Per-draft latency counts only the Supervisor's own time.** `DraftMetadata.latency_seconds` = the draft's own `writer`/`qa_legal` durations + its Scout share + an equal share of `max(supervisor.total_duration_seconds − Σ supervisor.tool_invocations.total_time_seconds, 0)`. The `stage_telemetry` entries stay exactly as `amortise_shared_telemetry` produces them (Q8, 2026-10-01). | Iteration 11. The Supervisor's duration already contains every sub-agent call, so the literal §6.8 sum would count it twice; per-draft times then mean what Approach 1's mean |
 | **P12** | **Run totals are logged once, on "Run completed".** `finalise_run(state, *, supervisor_telemetry, rates)` keeps its signature, computes the run's tokens and cost and returns them with `persistence_failed`, and logs no totals line. The composition root measures wall-clock and logs all three on "Run completed" (Q9, 2026-10-01). | Iterations 11 and 14. D-I wins over the plan's Iteration 11 wording; DM18 holds, since nothing is stored on `RunState` |
+| **P13** | **`PARSER_ERROR` needs a Supervisor that ended on its own.** It applies only when the Supervisor ended its own invocation, no fatal stop occurred and no `scout_tool` call succeeded; a session lost at the Scout is `MCP_ERROR` (2), and a Scout failure never retried successfully is `PARSER_ERROR` (3) (Q11, 2026-10-05). | Iteration 14. Reconciles §7.6 with D-D and §6.10; no exit code is added, and P6's numeric maximum still combines the rest |
 
 ---
 
@@ -141,7 +142,7 @@ These settle points that the design (Draft v7) left open. `SPECIFICATIONS.md` ap
 | 11 | End-of-run reconciliation and rendering | 3 | `src/rendering.py`, `src/telemetry.py` | ✅ Complete (2026-10-01, 1068 tests) |
 | 12 | SDK spike: fatal stop and logging hooks | 4 | `src/hooks.py`, SDK contract tests | ✅ Complete (2026-10-01, 1111 tests) |
 | 13 | Supervisor agent | 4 | `src/supervisor.py` | ✅ Complete (2026-10-05, 1244 tests) |
-| 14 | Composition root and CLI | 4 | `src/app.py`, `src/cli.py` | ⏳ Pending |
+| 14 | Composition root and CLI | 4 | `src/app.py`, `src/cli.py` | ✅ Complete (2026-10-05, 1414 tests) |
 | 15 | Scripted end-to-end scenarios | 5 | `tests/test_integration/test_supervisor_e2e.py` | ⏳ Pending |
 | 16 | Live end-to-end tests and benchmark report (built, not run) | 6 | `tests/test_live/`, `src/benchmark.py`, `README.md` | ⏳ Pending |
 

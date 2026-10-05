@@ -318,36 +318,46 @@ def test_supervisor_model_receives_the_section_7_1_descriptions_word_for_word(st
 # What the system prompt must never contain (§7.4, D-F, DM3, DM16)
 # ---------------------------------------------------------------------------
 
-#: The verbs of working on article text, uninflected; ``_ARTICLE_WORK`` accepts any inflection.
+#: The verbs of working on article text, as the verbs' stems; ``_ARTICLE_WORK`` adds the regular endings and
+#: ``rewrote``/``rewritten``.
 _ARTICLE_VERB = (
-    r"(?:review|score|rate|grade|improve|edit|rewrite|reword|proofread|polish|read|judge|check|assess|evaluate"
-    r"|fix|correct|critique|inspect|examine)"
+    r"(?:review|scor|rat|grad|improv|edit|rewr[io]t|reword|proofread|polish|read|judg|check|assess|evaluat"
+    r"|fix|correct|critiqu|inspect|examin)"
 )
 #: An instruction to work on article text: one of those verbs, in any inflection, then within four words an article
 #: or a draft, singular or plural, after any determiner or possessive. A plain word list would also catch
 #: ``review_notes`` and ``newsworthiness_score``, so the verb must govern the object; a word after "and" or "or"
 #: starts a new phrase, so "read each QA report and ... the latest draft" is not one instruction.
 _ARTICLE_WORK = re.compile(
-    r"\b" + _ARTICLE_VERB + r"(?:s|es|d|ed|ing)?\b"
-    r"(?:[ ,]+(?!(?:and|or)\b)\S+){0,4}?"
+    r"\b" + _ARTICLE_VERB + r"(?:e|es|ed|d|s|ing|ten)?\b"
+    r"(?:[ ,]+(?!(?:and|or)\b)[^\s,]+){0,4}?"
     r"[ ,]+(?:article|draft)s?\b",
     re.IGNORECASE,
 )
 #: A negation that governs a match: within three words before it, as in "never read, judge or edit article text".
 #: "no" is left out: it is usually a determiner ("no issues"), not a negation of the instruction.
-_NEGATED_BEFORE = re.compile(r"\b(?:never|not|don't|cannot)\b(?:[ ,]+\S+){0,3}[ ,]*$", re.IGNORECASE)
+_NEGATED_BEFORE = re.compile(r"\b(?:never|not|don't|cannot)\b(?:[ ,]+[^\s,]+){0,3}[ ,]*$", re.IGNORECASE)
+#: A negation that governs the matched verb itself: the negation, then only a list of verbs it also governs, as in
+#: "never read, judge or edit article text". "Never save before you review the draft" negates "save", not "review".
+_NEGATED_VERB = re.compile(
+    r"\b(?:never|not|don't|cannot)[ ]+(?:[^\s,]+(?:,[ ]+(?:(?:and|or)[ ]+)?|[ ]+(?:and|or)[ ]+))*$",
+    re.IGNORECASE,
+)
 #: Words that negate a clause: "never read", "not the end", "no direct access".
 _NEGATION = re.compile(r"\b(?:never|not|no|nothing)\b", re.IGNORECASE)
 #: Clauses end at ``.``, ``!``, ``?`` or ``;`` followed by whitespace.
 _CLAUSE_BREAK = re.compile(r"(?<=[.!?;])\s+")
+#: A count, in digits or in words, as a bound on the run would state it.
+_COUNT = r"(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|twelve|fifteen|twenty|thirty|forty|fifty)"
 #: A bound on the run: a tool-call budget, or a limit on repeated violations. DM16 sets neither.
 _RUN_BOUNDS: tuple[re.Pattern[str], ...] = (
     re.compile(r"\bbudget\b", re.IGNORECASE),
     re.compile(
-        r"\b(?:after|within|more than|at most|up to|maximum of) \d+ (?:tool )?(?:calls|tools)\b", re.IGNORECASE
+        r"\b(?:after|within|more than|at most|up to|maximum of|exceed) " + _COUNT + r" (?:tool )?(?:calls|tools)\b",
+        re.IGNORECASE,
     ),
     re.compile(r"\btool[- ]calls? (?:limit|ceiling|cap)\b", re.IGNORECASE),
-    re.compile(r"\b(?:after|at most|more than) \d+ violations\b", re.IGNORECASE),
+    re.compile(r"\b(?:after|at most|more than) " + _COUNT + r" violations\b", re.IGNORECASE),
     re.compile(r"\bviolations? (?:repeats?|occurs?) (?:\d+|one|two|three|four|five) times\b", re.IGNORECASE),
 )
 #: An ISO date literal; the token ``YYYY-MM-DD`` is not one.
@@ -366,35 +376,37 @@ def _affirmative_clauses(text: str, pattern: re.Pattern[str]) -> list[str]:
     return [clause for clause in _clauses(text) if pattern.search(clause) and not _NEGATION.search(clause)]
 
 
-def _affirmative_matches(text: str, pattern: re.Pattern[str]) -> list[str]:
-    """Every match of ``pattern`` in ``text`` that no negation within three words before it governs."""
+def _affirmative_matches(text: str, pattern: re.Pattern[str], negation: re.Pattern[str]) -> list[str]:
+    """Every match of ``pattern`` in ``text`` whose preceding clause text ``negation`` does not end in."""
     return [
         match.group(0)
         for clause in _clauses(text)
         for match in pattern.finditer(clause)
-        if not _NEGATED_BEFORE.search(clause[: match.start()])
+        if not negation.search(clause[: match.start()])
     ]
 
 
 def _article_work_instructions(text: str) -> list[str]:
-    """Every instruction in ``text`` to review, score or improve article text."""
-    return _affirmative_matches(text, _ARTICLE_WORK)
+    """Every instruction in ``text`` to review, score or improve article text, unless its own verb is negated."""
+    return _affirmative_matches(text, _ARTICLE_WORK, _NEGATED_VERB)
 
 
 #: A request for the Supervisor to brief the Writer: feedback, revision notes or instructions, or telling it.
 _WRITER_FEEDBACK = re.compile(
-    r"\b(?:feedback|revision (?:notes|instructions?)|instructions? for the Writer|tell the Writer|give the Writer)\b",
+    r"\b(?:feedback|revision (?:notes|instructions?)|instructions? for the Writer|tell the Writer|give the Writer"
+    r"|brief the Writer|explain to the Writer|(?:guidance|comments) (?:to|for) the Writer)\b",
     re.IGNORECASE,
 )
 #: A clause naming the Scout or QA-Legal, by tool or by agent.
 _SCOUT_OR_QA = re.compile(r"\b(?:scout_tool|qa_tool|Scout|QA-Legal)\b", re.IGNORECASE)
 #: A failure, in lower case: the prompt's ``ERROR`` is a QA status, not a failed call, so case matters here.
-_FAILURE = re.compile(r"\bfail|\berrors?\b|\breturns an error\b")
+_FAILURE = re.compile(r"\bfail|\berrors?\b")
 
 
 def _writer_feedback_instructions(text: str) -> list[str]:
     """Every request in ``text`` for feedback or revision instructions for the Writer."""
-    return _affirmative_matches(text, _WRITER_FEEDBACK)
+    # Within three words, not only of its own verb: "You never write feedback for the Writer." negates "write".
+    return _affirmative_matches(text, _WRITER_FEEDBACK, _NEGATED_BEFORE)
 
 
 def _failed_call_rules(text: str) -> list[str]:
@@ -443,6 +455,16 @@ ARTICLE_WORK_PROBES: tuple[str, ...] = (
     "Before saving, review each draft and improve its wording where QA-Legal objects.",
     "Read the latest draft and check the article for errors before you call save_draft.",
     "If QA-Legal reports no issues, still review the draft yourself and tell the Writer what to fix.",
+    # A2: inflections whose stem drops a final "e", and the irregular "rewrote".
+    "When scoring the draft, be strict.",
+    "Consider improving the article.",
+    "Before judging the draft, read the report.",
+    "Rating the article is your job.",
+    "Start by evaluating the draft.",
+    "You rewrote the draft.",
+    # A3: the negation governs another verb, so the instruction to work on the draft still stands.
+    "Never save before you review the draft.",
+    "Don't save until you read the draft.",
 )
 
 
@@ -450,6 +472,11 @@ ARTICLE_WORK_PROBES: tuple[str, ...] = (
 def test_article_work_instructions_catch_realistic_phrasings(text: str) -> None:
     """Inflected verbs, plural or possessive objects and a determiner "no" do not hide an instruction."""
     assert _article_work_instructions(text) != []
+
+
+def test_article_work_check_is_linear_on_comma_dense_text() -> None:
+    """A1 / QA-m4: comma-dense text with no article or draft returns at once; the checks never backtrack on it."""
+    assert _article_work_instructions("review " + ", " * 2000 + "x") == []
 
 
 @pytest.mark.parametrize(
@@ -460,6 +487,11 @@ def test_article_work_instructions_catch_realistic_phrasings(text: str) -> None:
         "When no issue is fixable, write feedback for the Writer anyway.",
         "Write revision instructions for the Writer.",
         "If QA-Legal reports no issues, still review the draft yourself and tell the Writer what to fix.",
+        # QA-m6: briefing the Writer without the word "feedback".
+        "Explain to the Writer what QA-Legal found.",
+        "Pass your comments to the Writer.",
+        "Brief the Writer on each issue.",
+        "Provide guidance to the Writer.",
     ],
 )
 def test_writer_feedback_check_catches_realistic_phrasings(text: str) -> None:
@@ -520,6 +552,11 @@ def test_failed_call_check_spares_the_error_status_and_writer_failures(text: str
         ("Finish within 40 calls.", 1),
         ("Use no more than 25 tool calls.", 1),
         ("An initial draft plus up to 2 revisions.", 0),
+        # QA-m6: counts in words, and "exceed".
+        ("Stop after three violations.", 1),
+        ("Never exceed 50 tool calls.", 1),
+        ("Call at most twenty tools.", 1),
+        ("An initial draft plus up to two revisions.", 0),
     ],
 )
 def test_run_bounds_catch_a_tool_call_budget_or_violation_bound(text: str, expected: int) -> None:
@@ -716,16 +753,46 @@ def test_scripted_supervisor_never_receives_article_text(state: RunState) -> Non
 
     run_supervisor(agent, RAW_PROMPT, today=TODAY)
 
-    received = json.dumps(model.received_messages, ensure_ascii=False)
-    assert [field for field in ARTICLE_FIELDS if DRAFT_ARGS[field] in received] == []
-    results = [
-        json.loads(block["toolResult"]["content"][0]["text"])
+    texts = _tool_result_texts(model)
+    assert _leaked_article_fields(texts) == []
+    results = [json.loads(text) for text in texts]
+    assert len(results) == 4
+    assert json_keys(results) & FORBIDDEN_SUPERVISOR_KEYS == set()
+
+
+def _tool_result_texts(model: ScriptedModel) -> list[str]:
+    """The text of every tool result the Supervisor model received on its last turn, as each tool returned it."""
+    return [
+        block["toolResult"]["content"][0]["text"]
         for message in model.received_messages[-1]
         for block in message["content"]
         if "toolResult" in block
     ]
-    assert len(results) == 4
-    assert json_keys(results) & FORBIDDEN_SUPERVISOR_KEYS == set()
+
+
+def _leaked_article_fields(texts: Sequence[str]) -> list[str]:
+    """The article fields of the scripted draft whose value appears in any of ``texts``, JSON-escaped as there.
+
+    A tool result is JSON, so a value's line break reaches the Supervisor as ``\\n``: the value is matched in its
+    escaped form, without its quotes.
+    """
+    return [
+        field
+        for field in ARTICLE_FIELDS
+        if any(json.dumps(DRAFT_ARGS[field], ensure_ascii=False)[1:-1] in text for text in texts)
+    ]
+
+
+def test_leaked_article_fields_catches_article_text_in_a_tool_result() -> None:
+    """A4 / QA-m5: a headline or an article body inside a tool result's JSON is caught, line breaks and all."""
+    clean = json.dumps({"result": {"doc_id": DEFAULT_DOC_ID}}, ensure_ascii=False, separators=(",", ":"))
+    leaked = json.dumps(
+        {"result": {"note": DRAFT_ARGS["headline"], "text": DRAFT_ARGS["article_body"]}},
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    assert _leaked_article_fields([clean]) == []
+    assert _leaked_article_fields([clean, leaked]) == ["headline", "article_body"]
 
 
 # ---------------------------------------------------------------------------

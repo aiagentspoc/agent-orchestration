@@ -28,6 +28,8 @@ EXPECTED_MODULES = [
     "src.rendering",
     "src.hooks",
     "src.supervisor",
+    "src.app",
+    "src.cli",
 ]
 
 

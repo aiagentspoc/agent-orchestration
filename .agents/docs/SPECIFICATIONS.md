@@ -1,7 +1,7 @@
 # HSE Easy — Approach 2 Specifications
 ## Research Analyst (Supervisor Agent-Orchestrated System)
 
-**Status:** Approved, 2026-09-28. This file consolidates the design plan (Draft v7) with decisions P1 to P12 from `IMPLEMENTATION_PLAN.md` §2.
+**Status:** Approved, 2026-09-28. This file consolidates the design plan (Draft v7) with decisions P1 to P13 from `IMPLEMENTATION_PLAN.md` §2.
 **SDK checked against:** `strands-agents 1.55.1`, the version locked in Approach 1's `uv.lock`.
 **Approach 1 (reference project):** `../code-orchestration/`, the folder next to `agent-orchestration/`. On this machine that is `C:\Users\Saksham\Git\poc\AIAgents\code-orchestration`. It is **read-only**. Its `src/`, `tests/`, `uv.lock`, `drafts/` and `.agents/docs/` are the baseline this project reuses and is benchmarked against.
 
@@ -26,7 +26,7 @@ Where they disagree, this file wins, and the disagreement is a stop condition (`
 | 5 | Architecture decisions D-A to D-J |
 | 6 | Data model |
 | 7 | Interfaces: tools, views, check order, CLI, logs, exit codes |
-| 8 | Decision log: Q1–Q12, DM1–DM18, P1–P12 |
+| 8 | Decision log: Q1–Q12, DM1–DM18, P1–P13 |
 
 ---
 
@@ -863,7 +863,7 @@ class ExitCode(IntEnum):                # [Amended] renamed from PipelineExitCod
     SUCCESS = 0                         # run completed, whatever the number of drafts saved
     NO_UPDATES = 1                      # the Scout returned no candidates
     MCP_ERROR = 2                       # MCP session failed to open or died mid-run (D-D)
-    PARSER_ERROR = 3                    # the Supervisor finished without a valid scope reaching scout_tool
+    PARSER_ERROR = 3                    # the Supervisor ended on its own with no successful scout_tool call (P13)
     PERSISTENCE_ERROR = 4               # a draft could not be rendered or written
     CONFIG_ERROR = 5                    # settings could not be resolved; the run never started
     SUPERVISOR_ERROR = 6                # added: the Supervisor failed on a provider or SDK error
@@ -953,14 +953,14 @@ python -m src.cli PROMPT [--max-drafts N] [--log-level {DEBUG,INFO,WARNING,ERROR
 
 #### 7.6 Exit-code rules
 
-When several conditions hold, the codes are combined by numeric maximum (P6), as in Approach 1's `_worst`.
+When several conditions hold, the codes are combined by numeric maximum (P6), as in Approach 1's `_worst`. A session lost at the Scout is `MCP_ERROR` (2), and a Scout failure that is never retried successfully is `PARSER_ERROR` (3) (P13).
 
 | Condition | Code |
 | :--- | :--- |
 | Settings cannot be resolved (credentials or rates); the run never starts | `CONFIG_ERROR` (5) |
 | The session fails to open, or `RunState.fatal_error` is set | `MCP_ERROR` (2) |
 | The Supervisor raises a provider or SDK error | `SUPERVISOR_ERROR` (6) |
-| The Supervisor finishes and `RunState.scope is None` | `PARSER_ERROR` (3) |
+| The Supervisor ended its own invocation (it did not raise and no fatal stop occurred) and no `scout_tool` call succeeded (`RunState.scope is None`, P13) | `PARSER_ERROR` (3) |
 | The Scout succeeded with zero candidates | `NO_UPDATES` (1) |
 | Rendering or writing a draft failed | `PERSISTENCE_ERROR` (4) |
 | Otherwise, whatever the number of drafts saved | `SUCCESS` (0) |
@@ -1015,7 +1015,7 @@ Exactly one MCP session is opened per run, and the exit-code mapping sits outsid
 | DM17 | Configuration | The attempt cap is fixed at 3; `ReasoningSettings` gains `supervisor`; `RunState` holds the configuration |
 | DM18 | Run result | `RunState` is the run's result, with `exit_code` and `supervisor_summary`; `PipelineRun` and `SupervisorReport` are removed; run totals are logged only; `ExitCode` (renamed) gains `SUPERVISOR_ERROR = 6` |
 
-#### 8.3 Implementation decisions (P1–P12)
+#### 8.3 Implementation decisions (P1–P13)
 
 These are recorded in `IMPLEMENTATION_PLAN.md` §2 and are applied throughout this file.
 
@@ -1033,8 +1033,9 @@ These are recorded in `IMPLEMENTATION_PLAN.md` §2 and are applied throughout th
 | P10 | **API-key redaction stays Approach 1's.** `_ApiKeyRedactionFilter` masks the key in the log message only; exception tracebacks and stack text are logged in full, even if they contain the key (`QUESTIONS.md` Q7, 2026-09-29: a proof of concept, where sensitive data may be logged for audit) |
 | P11 | **Per-draft latency counts only the Supervisor's own time.** `DraftMetadata.latency_seconds` is the draft's own `writer` and `qa_legal` durations, plus its Scout share, plus an equal share of `max(supervisor.total_duration_seconds − Σ supervisor.tool_invocations.total_time_seconds, 0)`; `stage_telemetry` stays exactly as `amortise_shared_telemetry` produces it (`QUESTIONS.md` Q8, 2026-10-01) |
 | P12 | **Run totals are logged once, on "Run completed".** `finalise_run(state, *, supervisor_telemetry, rates)` keeps its signature, computes the run's tokens and cost and returns them with `persistence_failed`, and logs no totals line; the composition root measures wall-clock and logs all three on "Run completed" (`QUESTIONS.md` Q9, 2026-10-01) |
+| P13 | **`PARSER_ERROR` needs a Supervisor that ended on its own.** It applies only when the Supervisor ended its own invocation, no fatal stop occurred and no `scout_tool` call succeeded; a session lost at the Scout is `MCP_ERROR` (2), and a Scout failure never retried successfully is `PARSER_ERROR` (3) (`QUESTIONS.md` Q11, 2026-10-05) |
 
-New decisions made during implementation are added to `IMPLEMENTATION_PLAN.md` §2 as P13 and so on, and recorded here.
+New decisions made during implementation are added to `IMPLEMENTATION_PLAN.md` §2 as P14 and so on, and recorded here.
 
 #### 8.4 Spike results
 

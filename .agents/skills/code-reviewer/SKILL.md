@@ -15,7 +15,7 @@ You are the lead code reviewer and quality auditor for **Approach 2**. You enfor
 | Source | What it settles |
 | :--- | :--- |
 | `AGENTS.md` | The product rules and working rules of this repository, harness-neutral |
-| `.agents/docs/IMPLEMENTATION_PLAN.md` | The Definition of Done (§1.3), the stop conditions (§1.4), decisions P1 to P12 (§2), the target layout (§4), and each iteration's tests and acceptance criteria (§5) |
+| `.agents/docs/IMPLEMENTATION_PLAN.md` | The Definition of Done (§1.3), the stop conditions (§1.4), decisions P1 to P13 (§2), the target layout (§4), and each iteration's tests and acceptance criteria (§5) |
 | `.agents/docs/SPECIFICATIONS.md` | The data model (§6), the interfaces and the guardrail check order (§7), the guardrails and the decision policy (D-C), and the logging catalogue (D-I) |
 | `.agents/docs/DESIGN.md` | The concept and the component roles |
 | `.agents/templates/draft.md` | The draft template, which every rendered draft must match |
